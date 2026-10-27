@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Further: learn a concept through a conversation with a peer.">
+  <title>Further — learn together</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="shell topbar">
+    <a class="wordmark" href="/" aria-label="Further home">further<span>↗</span></a>
+    <span class="pill" id="mode-label">Local starter · sample peers</span>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">A LITTLE CURIOSITY. A SHARED NEXT STEP.</p>
+      <h1>Go further.<br><span>Together.</span></h1>
+      <p class="lead">Bring a question. Find someone curious.<br>Leave with something you can explain.</p>
+      <p class="demo-note">This starter uses sample peers. A practice session is not a live call with another person.</p>
+    </section>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="goal-heading">
+        <div class="step"><span>01</span><p>Your starting point</p></div>
+        <h2 id="goal-heading">What would you like to understand?</h2>
+        <form id="goal-form">
+          <label for="topic">A concept or a question</label>
+          <textarea id="topic" name="topic" minlength="5" maxlength="240" required>Why are GPUs useful for machine learning?</textarea>
+          <div class="field-pair">
+            <div><label for="level">My current level</label><select id="level" name="level"><option value="beginner">Finding my feet</option><option value="intermediate">Some experience</option><option value="advanced">Comfortable, still curious</option></select></div>
+            <div><label for="language">Conversation language</label><select id="language" name="language"><option>English</option><option>Hindi</option><option>Punjabi</option><option>Spanish</option></select></div>
+          </div>
+          <label for="minutes">Time I have</label>
+          <select id="minutes" name="minutes"><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option></select>
+          <button class="primary" id="match-button" type="submit">Find a learning partner <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="quiet">One concept. A short session. No permanent group required.</p>
+      </section>
+      <section class="panel results-panel" aria-labelledby="matches-heading">
+        <div class="step"><span>02</span><p>A useful connection</p></div>
+        <h2 id="matches-heading">Someone to think with.</h2>
+        <div id="matches" class="matches"><div class="empty"><span aria-hidden="true">◎</span><p>Start with your question.<br>We’ll look for shared curiosity.</p></div></div>
+      </section>
+    </div>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <section id="session" class="panel session" aria-labelledby="session-heading" hidden>
+      <div class="session-top"><div><div class="step"><span>03</span><p>Practice a conversation</p></div><h2 id="session-heading">Build understanding together.</h2></div><span class="pill" id="plan-mode">Demo prompts</span></div>
+      <p class="quiet" id="session-peer"></p>
+      <h3>Your shared question</h3><p id="shared-question" class="shared-question"></p>
+      <ol id="prompts" class="prompts"></ol>
+      <div class="check"><h3>Before you leave</h3><p id="understanding-check"></p><label for="explanation">Try explaining it in your own words</label><textarea id="explanation" maxlength="2000" placeholder="What can you explain now that you couldn't explain before?"></textarea><p class="quiet">Practice notes stay in this page and are not submitted or graded.</p></div>
+    </section>
+    <section class="principles"><p><strong>People lead.</strong> Explain, ask, challenge, and listen.</p><p><strong>AI gives structure.</strong> Useful questions, not a replacement for a peer.</p><p><strong>Progress stays small.</strong> One idea you can explain a little better.</p></section>
+  </main>
+  <footer class="shell"><span>further ↗</span><p>Built with curiosity. Local hackathon starter.</p></footer>
+</body>
+</html>
