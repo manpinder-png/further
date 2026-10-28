@@ -3,56 +3,209 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Further: learn a concept through a conversation with a peer.">
+  <meta name="description" content="Further: find people learning the same concept right now, and learn it together.">
+  <meta name="color-scheme" content="dark">
   <title>Further — learn together</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/map.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="shell topbar">
-    <a class="wordmark" href="/" aria-label="Further home">further<span>↗</span></a>
-    <span class="pill" id="mode-label">Local starter · sample peers</span>
-  </header>
-  <main class="shell">
-    <section class="hero">
-      <p class="eyebrow">A LITTLE CURIOSITY. A SHARED NEXT STEP.</p>
-      <h1>Go further.<br><span>Together.</span></h1>
-      <p class="lead">Bring a question. Find someone curious.<br>Leave with something you can explain.</p>
-      <p class="demo-note">This starter uses sample peers. A practice session is not a live call with another person.</p>
-    </section>
-    <div class="workspace">
-      <section class="panel" aria-labelledby="goal-heading">
-        <div class="step"><span>01</span><p>Your starting point</p></div>
-        <h2 id="goal-heading">What would you like to understand?</h2>
-        <form id="goal-form">
-          <label for="topic">A concept or a question</label>
-          <textarea id="topic" name="topic" minlength="5" maxlength="240" required>Why are GPUs useful for machine learning?</textarea>
-          <div class="field-pair">
-            <div><label for="level">My current level</label><select id="level" name="level"><option value="beginner">Finding my feet</option><option value="intermediate">Some experience</option><option value="advanced">Comfortable, still curious</option></select></div>
-            <div><label for="language">Conversation language</label><select id="language" name="language"><option>English</option><option>Hindi</option><option>Punjabi</option><option>Spanish</option></select></div>
-          </div>
-          <label for="minutes">Time I have</label>
-          <select id="minutes" name="minutes"><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option></select>
-          <button class="primary" id="match-button" type="submit">Find a learning partner <span aria-hidden="true">↗</span></button>
-        </form>
-        <p class="quiet">One concept. A short session. No permanent group required.</p>
-      </section>
-      <section class="panel results-panel" aria-labelledby="matches-heading">
-        <div class="step"><span>02</span><p>A useful connection</p></div>
-        <h2 id="matches-heading">Someone to think with.</h2>
-        <div id="matches" class="matches"><div class="empty"><span aria-hidden="true">◎</span><p>Start with your question.<br>We’ll look for shared curiosity.</p></div></div>
-      </section>
+  <header class="topbar">
+    <div class="shell bar">
+      <a class="wordmark" href="/" aria-label="Further home">further<span aria-hidden="true">↗</span></a>
+      <ol class="steps mono" id="steps" aria-label="Journey progress">
+        <li data-step="1"><span>01</span><em>Intent</em></li>
+        <li data-step="2"><span>02</span><em>Profile</em></li>
+        <li data-step="3"><span>03</span><em>Map</em></li>
+        <li data-step="4"><span>04</span><em>Match</em></li>
+        <li data-step="5"><span>05</span><em>Room</em></li>
+        <li data-step="6"><span>06</span><em>Wrap-up</em></li>
+      </ol>
+      <div class="status-cluster">
+        <span class="live mono"><span class="dot" aria-hidden="true"></span><span id="online-top">--</span>&nbsp;online</span>
+        <span class="badge mono" id="ai-badge" tabindex="0">AI · checking</span>
+      </div>
     </div>
-    <p id="status" class="status" role="status" aria-live="polite"></p>
-    <section id="session" class="panel session" aria-labelledby="session-heading" hidden>
-      <div class="session-top"><div><div class="step"><span>03</span><p>Practice a conversation</p></div><h2 id="session-heading">Build understanding together.</h2></div><span class="pill" id="plan-mode">Demo prompts</span></div>
-      <p class="quiet" id="session-peer"></p>
-      <h3>Your shared question</h3><p id="shared-question" class="shared-question"></p>
-      <ol id="prompts" class="prompts"></ol>
-      <div class="check"><h3>Before you leave</h3><p id="understanding-check"></p><label for="explanation">Try explaining it in your own words</label><textarea id="explanation" maxlength="2000" placeholder="What can you explain now that you couldn't explain before?"></textarea><p class="quiet">Practice notes stay in this page and are not submitted or graded.</p></div>
+  </header>
+
+  <main class="shell">
+    <p id="status" class="status mono" role="status" aria-live="polite"></p>
+
+    <!-- 01 Command bar -->
+    <section class="screen intro" id="screen-1" data-step="1" aria-labelledby="h-1">
+      <p class="kicker mono">// 01 · intent</p>
+      <h1 id="h-1" tabindex="-1">What are you here for?</h1>
+      <p class="lead">Say it the way you'd say it to a friend. We'll sharpen it into one question you can work through with a few people who are online now.</p>
+      <form id="intent-form" class="command" autocomplete="off">
+        <label for="intent" class="sr-only">What you want to understand</label>
+        <span class="caret mono" aria-hidden="true">&gt;_</span>
+        <input id="intent" name="intent" minlength="3" maxlength="240" required
+               placeholder="finally understand why GPUs matter for ML">
+        <button class="primary" type="submit" id="intent-go">Sharpen <kbd>↵</kbd></button>
+      </form>
+      <div class="chips" aria-label="Examples to try">
+        <button type="button" class="chip" data-intent="I'm a backend dev and I want to finally get why GPUs matter for ML">Why GPUs matter for ML</button>
+        <button type="button" class="chip" data-intent="Studying for AWS Solutions Architect and IAM roles keep confusing me, 20 min">AWS IAM is confusing me</button>
+        <button type="button" class="chip" data-intent="Switching careers into UX, how do I build a portfolio that gets interviews?">Switching into UX</button>
+      </div>
+      <p class="online-strip mono"><span class="dot pulse" aria-hidden="true"></span><strong id="online-count">--</strong>&nbsp;learners online now <span class="tag">sample data</span></p>
     </section>
-    <section class="principles"><p><strong>People lead.</strong> Explain, ask, challenge, and listen.</p><p><strong>AI gives structure.</strong> Useful questions, not a replacement for a peer.</p><p><strong>Progress stays small.</strong> One idea you can explain a little better.</p></section>
+
+    <!-- 02 Profile card -->
+    <section class="screen" id="screen-2" data-step="2" aria-labelledby="h-2" hidden>
+      <p class="kicker mono">// 02 · profile</p>
+      <h2 id="h-2" tabindex="-1">Here's what we heard.</h2>
+      <p class="lead">Check it and change anything that's off. Your tier is for this concept only, not your whole career.</p>
+      <form id="profile-form" class="panel profile-card" novalidate>
+        <div class="card-head mono"><span>learner profile</span><span class="badge" id="profile-badge"></span></div>
+        <div class="identity">
+          <div class="field" data-field="name"><label class="mono" for="f-name">name</label><input id="f-name" name="name" maxlength="40" required></div>
+          <div class="field" data-field="experience_years"><label class="mono" for="f-experience_years">experience_years</label><input id="f-experience_years" name="experience_years" type="number" min="0" max="60" required></div>
+          <div class="field wide" data-field="expertise_areas"><label class="mono" for="f-expertise_areas">expertise_areas</label><input id="f-expertise_areas" name="expertise_areas" maxlength="200" aria-describedby="expertise-hint"><small id="expertise-hint">Comma separated</small></div>
+        </div>
+        <div class="fields">
+          <div class="field" data-field="focus_area"><label class="mono" for="f-focus_area">focus_area</label><input id="f-focus_area" name="focus_area" list="focus-options" maxlength="60" required><datalist id="focus-options"></datalist></div>
+          <div class="field" data-field="concept"><label class="mono" for="f-concept">concept</label><input id="f-concept" name="concept" maxlength="80" required></div>
+          <div class="field wide" data-field="sharpened_question"><label class="mono" for="f-sharpened_question">sharpened_question</label><textarea id="f-sharpened_question" name="sharpened_question" maxlength="240" rows="2" required></textarea></div>
+          <div class="field" data-field="tier"><label class="mono" for="f-tier">tier <span id="tier-on">on this concept</span></label>
+            <select id="f-tier" name="tier"><option value="1">1 · New to it</option><option value="2">2 · Getting started</option><option value="3">3 · Working knowledge</option><option value="4">4 · Confident</option><option value="5">5 · Could teach it</option></select></div>
+          <div class="field" data-field="learning_style"><label class="mono" for="f-learning_style">learning_style</label>
+            <select id="f-learning_style" name="learning_style"><option value="visual">visual</option><option value="hands-on">hands-on</option><option value="discussion">discussion</option><option value="reading">reading</option></select></div>
+          <div class="field" data-field="language"><label class="mono" for="f-language">language</label>
+            <select id="f-language" name="language"><option>English</option><option>Hindi</option><option>Punjabi</option><option>Spanish</option></select></div>
+          <div class="field" data-field="availability_minutes"><label class="mono" for="f-availability_minutes">availability_minutes</label><input id="f-availability_minutes" name="availability_minutes" type="number" min="10" max="60" required></div>
+        </div>
+        <div class="actions">
+          <button type="button" class="ghost" id="back-1">← Rephrase</button>
+          <button type="submit" class="primary" id="profile-go">Find my people →</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 03 Social brain map -->
+    <section class="screen" id="screen-3" data-step="3" aria-labelledby="h-3" hidden>
+      <p class="kicker mono">// 03 · social brain map</p>
+      <h2 id="h-3" tabindex="-1">Who's thinking about this right now.</h2>
+      <div class="map-layout">
+        <div class="panel map-wrap" id="map-wrap">
+          <svg id="map" role="img" aria-labelledby="map-desc"><desc id="map-desc">Sample learners grouped by topic. Your node moves into the cluster nearest your profile.</desc></svg>
+          <div id="map-tip" class="tip mono" hidden></div>
+          <p class="legend mono"><span class="lg on"></span>online <span class="lg off"></span>away <span class="lg you"></span>you · size = tier · sample data</p>
+        </div>
+        <aside class="panel side" aria-label="Clusters">
+          <div class="card-head mono"><span>clusters</span><span id="cluster-total"></span></div>
+          <ul id="cluster-list" class="cluster-list"></ul>
+          <p id="placement" class="placement" aria-live="polite"></p>
+          <div class="stack">
+            <button class="primary" id="map-go" type="button" disabled>See who's here →</button>
+            <button class="ghost" id="back-2" type="button">← Edit profile</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 04 Match card -->
+    <section class="screen" id="screen-4" data-step="4" aria-labelledby="h-4" hidden>
+      <p class="kicker mono">// 04 · match</p>
+      <h2 id="h-4" tabindex="-1"><span class="dot pulse" aria-hidden="true"></span> <span id="match-title">People are exploring this right now</span></h2>
+      <p class="lead" id="match-sub"></p>
+      <div class="panel match-card" id="match-card">
+        <ul id="members" class="members"></ul>
+        <p id="rationale" class="rationale mono"></p>
+        <div class="actions" id="match-actions">
+          <button type="button" class="ghost" id="another">Find another group ↻</button>
+          <button type="button" class="primary" id="join">Join session →</button>
+        </div>
+        <div id="lobby" class="lobby" hidden>
+          <p class="mono label">lobby · opening room in</p>
+          <p class="count mono" id="lobby-count" aria-live="off">5</p>
+          <ul id="lobby-ready" class="lobby-ready mono"></ul>
+          <button type="button" class="ghost" id="lobby-cancel">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 Session room -->
+    <section class="screen" id="screen-5" data-step="5" aria-labelledby="h-5" hidden>
+      <p class="kicker mono">// 05 · session room</p>
+      <h2 id="h-5" tabindex="-1" class="sr-only">Session room</h2>
+      <div class="room">
+        <div class="room-main">
+          <div class="panel pinned"><span class="tag mono">pinned</span><p id="room-question" class="question"></p></div>
+          <div class="panel starter">
+            <div class="card-head mono"><span>ai starter prompt</span><span class="badge" id="plan-badge"></span></div>
+            <p id="room-prompt" class="prompt-text"></p>
+            <button type="button" class="ghost small" id="next-prompt">Another prompt</button>
+          </div>
+          <div class="panel chat">
+            <ol id="chat" class="chat-log"></ol>
+            <p id="typing" class="typing mono" aria-hidden="true"></p>
+            <form id="chat-form" class="composer" autocomplete="off">
+              <label class="sr-only" for="chat-input">Message</label>
+              <input id="chat-input" maxlength="300" placeholder="Say what you think. Messages stay in this page.">
+              <button class="primary small" type="submit">Send</button>
+            </form>
+          </div>
+        </div>
+        <aside class="room-side">
+          <div class="panel timer-box">
+            <p class="mono label">time left</p>
+            <p class="timer mono" id="timer" role="timer">15:00</p>
+            <div class="meter" aria-hidden="true"><span id="timer-bar"></span></div>
+          </div>
+          <div class="panel">
+            <div class="card-head mono"><span>in this room</span><span id="room-count"></span></div>
+            <ul id="room-members" class="room-members"></ul>
+          </div>
+          <button type="button" class="primary" id="wrap-go">Wrap up →</button>
+          <p class="quiet">Sample peers and scripted messages. No one else is connected.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 06 Wrap-up -->
+    <section class="screen" id="screen-6" data-step="6" aria-labelledby="h-6" hidden>
+      <p class="kicker mono">// 06 · wrap-up</p>
+      <h2 id="h-6" tabindex="-1">Explain it back.</h2>
+      <p class="lead" id="wrap-check"></p>
+      <form id="wrap-form" class="panel wrap-form">
+        <label for="explain" class="mono">your one line</label>
+        <input id="explain" maxlength="400" required placeholder="In one sentence, how would you explain it to a friend?">
+        <p class="mono label">your group's one-liners · mark the ones that landed</p>
+        <ul id="peer-explains" class="peer-explains"></ul>
+        <div class="actions"><span class="quiet">Peers' lines are sample text. Their marks on yours are simulated.</span>
+          <button class="primary" type="submit" id="wrap-submit">See what moved →</button></div>
+      </form>
+      <div id="wrap-result" hidden>
+        <div class="result-grid">
+          <div class="panel">
+            <div class="card-head mono"><span>tier · <span id="tier-concept"></span></span><span id="tier-change"></span></div>
+            <div class="pips big" id="tier-pips" aria-hidden="true"></div>
+            <p id="tier-reason"></p>
+            <p class="quiet" id="marks-note"></p>
+          </div>
+          <div class="panel">
+            <div class="card-head mono"><span>reputation</span><span class="tag">yours alone · no leaderboard</span></div>
+            <p class="rep mono"><span id="rep-total">0</span> <span class="gain" id="rep-gain"></span></p>
+            <ul id="rep-breakdown" class="breakdown mono"></ul>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="card-head mono"><span>memory trail</span><span class="quiet">concepts you've explored</span></div>
+          <ol id="trail" class="trail"></ol>
+        </div>
+        <div class="actions">
+          <button type="button" class="ghost" id="to-map">← Back to the map</button>
+          <button type="button" class="primary" id="restart">Explore another concept →</button>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer class="shell"><span>further ↗</span><p>Built with curiosity. Local hackathon starter.</p></footer>
+
+  <footer class="shell foot mono">
+    <span>further ↗</span>
+    <span>Local demo. All learners are sample peers, not real people. Room messages are scripted.</span>
+  </footer>
 </body>
 </html>

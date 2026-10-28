@@ -356,11 +356,15 @@ _LEARNERS = {
     ],
 }
 
+# Which sample learners show as "away" (by position in each cluster), so cluster activity varies.
+_AWAY = {"gpu": {4, 9}, "calculus": {1, 6, 9}, "aws": {8}, "react": {4, 9}, "design": {2, 4, 8, 9},
+         "dataviz": {1, 4, 7}, "llm": {8}, "ux": {2, 9}}
+
 SAMPLE_LEARNERS = [
     {"id": "sample-" + cluster["id"] + "-" + str(index + 1), "name": name, "cluster": cluster["id"],
      "concept": cluster["concept"], "intent": intent, "tier": tier, "experience_years": years,
      "learning_style": style, "language": language, "minutes": minutes,
-     "online": index % 5 != 4, "sample": True}
+     "online": index not in _AWAY[cluster["id"]], "sample": True}
     for cluster in CLUSTERS
     for index, (name, intent, tier, years, style, minutes, language) in enumerate(_LEARNERS[cluster["id"]])
 ]
@@ -497,8 +501,10 @@ def pick_group(profile: Profile, exclude=(), size: int = 4) -> Dict[str, Any]:
     ahead = sum(1 for l in members if l["tier"] > profile.tier)
     same = sum(1 for l in members if l["tier"] == profile.tier)
     newer = len(members) - ahead - same
-    rationale = ("Mixed tiers on purpose: " + str(ahead) + " ahead of you, " + str(same)
-                 + " at your level, " + str(newer) + " newer. All online, all in " + profile.language + ".")
+    parts = [str(n) + " " + label for n, label in ((ahead, "ahead of you"), (same, "at your level"),
+                                                   (newer, "newer to it")) if n]
+    rationale = ("Mixed tiers on purpose: " + ", ".join(parts) + ". " if parts else "") + (
+        "All online now, all in " + profile.language + ".")
     result = [dict(l, role_hint=_role_hint(l["tier"], profile.tier),
                    explain_back=cluster["takeaways"][i % len(cluster["takeaways"])])
               for i, l in enumerate(members)]
@@ -554,7 +560,8 @@ def wrap_up(profile: Profile, explanation: Any, member_ids: Any, marked_ids: Any
     levelled = words >= 6 and received >= 1 and profile.tier < 5
     tier_after = profile.tier + 1 if levelled else profile.tier
     if levelled:
-        tier_reason = "You explained it back and " + str(received) + " peer(s) marked it clear."
+        tier_reason = ("You explained it back and " + str(received)
+                       + (" peer" if received == 1 else " peers") + " marked it clear.")
     elif profile.tier == 5:
         tier_reason = "You're already at tier 5 on this concept."
     elif words < 6:
