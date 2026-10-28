@@ -184,3 +184,26 @@ class ProfileTaskTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckProvidersTests(unittest.TestCase):
+    def test_reports_pass_fail_and_skip_without_printing_keys(self):
+        import io
+        from contextlib import redirect_stdout
+        from further import check_providers
+        env = {"META_API_KEY": "meta-secret-value", "FIREWORKS_API_KEY": "fw-secret-value",
+               "FIREWORKS_URL": "https://fireworks.test/v1", "FIREWORKS_MODEL": "llama-test"}
+        out = io.StringIO()
+        with patch.dict(os.environ, env, clear=True), patch("further.check_providers.load_local_env"), \
+                patch("urllib.request.build_opener") as build, redirect_stdout(out):
+            build.return_value.open.side_effect = [reply({"ok": True}),
+                                                   urllib.error.HTTPError("u", 401, "no", {}, None)]
+            code = check_providers.main([])
+        text = out.getvalue()
+        self.assertEqual(code, 1)
+        self.assertRegex(text, r"meta\s+PASS\s+muse-spark-1.3")
+        self.assertRegex(text, r"fireworks\s+FAIL")
+        self.assertRegex(text, r"baseten\s+SKIP")
+        self.assertRegex(text, r"demo\s+PASS")
+        self.assertIn("Live Meta-model providers working: meta", text)
+        self.assertNotIn("secret-value", text)
