@@ -1,59 +1,33 @@
 # Further
 
-Learn something. Move forward together.
+A real-time social brain for finding people and live experiences around what you want to learn now.
 
-Further connects people who are available now and want to understand a specific concept. AI helps turn a vague interest into a useful question and guides a short session; people do the explaining and reasoning.
+**Current phase: business requirements review. Draft v0.1, October 27, 2026.**
 
-**Status: working local starter, not the finished hackathon product.** The included peers are explicitly labelled samples. Matching is a transparent keyword baseline. Real people, shared live rooms, persistence, authentication, and production deployment are tracked in the backlog.
+Further interprets current learning intent, combines it with relevant background and live availability, and recommends people, groups, or live opportunities. Further owns the intelligence that supports these connections. People can use a dedicated interface or, in the broader vision, an AI application connected to Further.
 
-## Start here
+## Discussion materials
 
-Requires Python 3.9 or newer. No package install, Node.js, API key, or paid service is needed for the default demo.
+- [Business requirements](docs/BUSINESS_REQUIREMENTS.md): product vision, desired behavior, proposed hackathon boundary, demonstration evidence, and open decisions.
+- [Three discussion slides](docs/FURTHER_DISCUSSION_SLIDES.html): download the HTML file and open it in a browser. Use the navigation buttons or left/right arrow keys. It works offline and prints as three slides.
+- [Team discussion](docs/DISCUSSION.md): decisions to resolve before technical design.
+- [Shared project](https://github.com/users/manpinder-png/projects/1): previous bootstrap tasks have been retired. New work follows team agreement.
 
-    git clone https://github.com/manpinder-png/further.git
-    cd further
-    python3 -m further
+## Spec-driven sequence
 
-Open http://127.0.0.1:8000. On Windows, use python instead of python3 if needed.
+1. Agree and version business requirements as a team.
+2. Derive technical requirements and evaluate architecture choices against them.
+3. Agree detailed journeys and user stories, then define tasks and owners with the project lead.
+4. Implement and validate against approved requirements.
 
-Try “Why are GPUs useful for machine learning?”, select English and 15 minutes, find a sample peer, and open a practice session. Explain the question out loud, use the discussion prompts, and try the independent understanding check.
+The starter implementation, its technical plan, and its premature backlog have been withdrawn from the current project. Git history preserves the earlier work. There is no current runnable product, chosen stack, implemented integration, or demonstrated scale.
 
-    python3 -m unittest discover -s tests -v
+## Product boundary
 
-The server binds to loopback only. This starter is intended for local development; a deployable multi-user service is a separate work item.
+People may continue learning with their preferred AI assistant. Further supplies the changing social context and connection intelligence: who is available, what they want to explore now, and which connection fits. A connector lets a host AI use this social brain while Further continues to perform its own inference and matching.
 
-## Team workspace
+“Muse” preserves the proposed host application's name from the product discussion. Its exact identity, connector support, and permissions require verification before any integration commitment.
 
-- [Project board](https://github.com/users/manpinder-png/projects/1)
-- [Repository issues](https://github.com/manpinder-png/further/issues)
-- [Product brief](docs/PRODUCT.md)
-- [Architecture and API](docs/ARCHITECTURE.md)
-- [Workstreams and milestones](docs/DELIVERY.md)
-- [Contribution guide](CONTRIBUTING.md)
+## Hackathon context
 
-Pick an issue, agree ownership on the board, and use a short branch and pull request. Initial workstream suggestions are UI, presence/matching, room collaboration, and AI/evaluation. These are unassigned suggestions until the team agrees who owns each.
-
-## Optional Meta model integration
-
-The server-side adapter is implemented but has not been tested against a live account. Demo mode never calls a provider.
-
-Copy .env.example to .env, add a valid MODEL_API_KEY locally, and explicitly change FURTHER_AI_MODE to meta. Restart the server. Selecting a peer will then request a session plan through Meta Model API. Confirm account credits/billing before enabling live calls.
-
-- Base URL: https://api.meta.ai/v1
-- Model ID: muse-spark-1.3 (configurable; verify availability in your account)
-- Endpoint: /chat/completions
-- Keys stay server-side and .env is ignored by git.
-- Live errors are shown as errors; the app does not disguise a failed live call as generated output.
-- The adapter has a timeout, bounded output, JSON validation, and no automatic paid retries.
-
-Official references, checked October 27, 2026: [Meta quickstart](https://dev.meta.ai/docs/quickstart) and [Chat Completions](https://dev.meta.ai/docs/protocols/chat-completions). Fireworks, Modal, and Baseten are evaluation options, not implemented integrations.
-
-## Hackathon target
-
-Startup track, Meta Global AI Developer Hackathon. Submission is due November 4, 2026 at 9 p.m. Eastern. Present only contributions built during the event. The repository must be public and the submission needs an accessible three-minute demo video.
-
-The final product must demonstrate real peer interaction and meaningful Meta model use. This demo-only baseline does not yet satisfy that target. See docs/DELIVERY.md for the acceptance checks.
-
-## License
-
-The team has not selected a software license yet. Resolve this before the final submission.
+Further is a team entry in the Startup track of the Meta Global AI Developer Hackathon. The recorded submission deadline is November 4, 2026 at 9 p.m. Eastern. The intended demo needs genuine live behavior and meaningful Meta model use. The requirements distinguish this proposed demonstration from the broader product vision.

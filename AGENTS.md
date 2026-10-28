@@ -1,13 +1,11 @@
-# Further development
+# Further: requirements phase
 
-- Read README.md, docs/PRODUCT.md, and docs/ARCHITECTURE.md before changing behavior.
-- Keep the core goal: concept-level matching between available people; AI facilitates human learning.
-- Preserve explicit labels for sample peers and demo-generated prompts. Never describe fixtures or mock output as real users or live model output.
-- The baseline uses Python's standard library and a browser UI. Keep startup and tests dependency-free unless an agreed issue changes the stack.
-- Run python3 -m unittest discover -s tests -v after functional changes.
-- Never commit .env, credentials, provider keys, private account details, onboarding notes, or user conversation exports.
-- Changes should preserve server-side keys, bounded inputs, same-origin checks, timeouts, and visible provider failures.
-- Keep the loopback-only default. Authentication, durable storage, abuse controls, and live room authorization must precede a public deployment.
-- Use short feature branches and focused PRs. Claim a workstream on the project board before overlapping work.
-- Do not assign teammates by email or invent GitHub handles.
-- Record implementation decisions and remaining demo limitations in the documentation.
+- Read README.md, docs/BUSINESS_REQUIREMENTS.md, and docs/DISCUSSION.md before changing this project.
+- Current work is business requirements and team discussion. The earlier starter implementation and backlog have been withdrawn at the project lead's request.
+- Follow the sequence: agreed business requirements, technical requirements, user stories, then tasks and implementation. The project lead wants direct control over project management and story creation. Do not recreate an implementation, choose a stack, assign owners, or create stories/issues without their direction.
+- Keep the central product: a real-time social brain connecting people and live experiences around current learning intent. Further owns its inference and matching even when a host AI uses it through a connector.
+- Separate stated direction, proposed demo scope, open decisions, and verified implementation. A draft is not team approval.
+- “Muse” is the proposed host name from the discussion. Do not claim a native integration or connector exists without verifying the host and its capabilities.
+- Never describe fixtures, replayed events, recorded outputs, or synthetic load as organic users, live providers, or proven production scale.
+- Keep credentials, private account/onboarding notes, teammate emails, and raw conversations outside this public repository. Never publish the parent workspace AGENTS.md.
+- Do not invent GitHub usernames or change ownership, access, or Project membership as part of requirements work.
