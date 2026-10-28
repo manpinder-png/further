@@ -2,14 +2,14 @@
 
 A real-time social brain for finding people and live experiences around what you want to learn now.
 
-**Current phase: business requirements review. Draft v0.2, October 27, 2026.**
+**Current phase: business requirements review. Draft v0.3, October 28, 2026.**
 
 Further maintains an evolving understanding of what someone wants to learn now and uses that understanding to recommend suitable people, groups, or live opportunities. Further owns both capabilities. Goals, relevant context, connections, and ongoing activity should continue across its dedicated interface and Muse through a connector, so changing interfaces does not require starting over.
 
 ## Discussion materials
 
 - [Business requirements](docs/BUSINESS_REQUIREMENTS.md): 22 requirements covering product value, continuity, evolving user context, proposed demonstration evidence, and open decisions.
-- [Three discussion slides](docs/FURTHER_DISCUSSION_SLIDES.html): download the HTML file and open it in a browser. Use the navigation buttons or left/right arrow keys. It works offline and prints as three slides.
+- [Three discussion slides](docs/FURTHER_DISCUSSION_SLIDES.html): download the HTML file and open it in a browser. Use the navigation buttons or left/right arrow keys. Narrow screens show all three slides in a scrolling reading layout. It works offline and includes a print layout for three slides.
 - [Team discussion](docs/DISCUSSION.md): clarified direction, the continuing discussion agenda, and decisions to resolve before technical design.
 - [Shared project](https://github.com/users/manpinder-png/projects/1): previous bootstrap tasks have been retired. New work follows team agreement.
 
@@ -29,6 +29,8 @@ People may continue learning with their preferred AI assistant. Further supplies
 The user-state direction has three categories: profile information, evolving long-term information, and current-task information. Field definitions follow a common contract while each person's values change independently. A temporary need should influence the current match without automatically becoming a permanent preference.
 
 “Muse” preserves the proposed host application's name from the product discussion. One working connector is the desired proof of continuity. Its exact identity, capabilities, and permissions require verification before a live integration can be claimed. The practice-question split remains deferred. Additional applications and multimodal inputs remain opportunities to assess.
+
+The connector proof should use the authorized current conversation alongside Further's user understanding and live social context. The proposed review cases also cover interrupted handoffs, late results, repeated connection actions, and ended sharing. These cases need team agreement before technical design.
 
 ## Hackathon context
 

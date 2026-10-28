@@ -1,7 +1,9 @@
 # Further: business requirements
 
-**Version:** 0.2  
-**Date:** October 27, 2026  
+**Version:** 0.3
+
+**Date:** October 28, 2026
+
 **Status:** Draft for team discussion. No team approval or implementation is implied.  
 **Decision authority:** Project lead and team. Technical requirements, user stories, tasks, and architecture follow business agreement.
 
@@ -18,6 +20,8 @@ This is a product specification for discussion, not a transcript or evidence of 
 - **Open decision:** a policy, threshold, or scope choice the team must resolve.
 
 Version 0.2 incorporates the October 27 discussion of continuity across interfaces, three categories of user information, and distinct understanding and recommendation capabilities. It preserves the broader social and live-event vision. Architecture ideas remain options for later evaluation. The product direction recorded here does not imply team approval or implementation.
+
+Version 0.3 makes the current-conversation proof explicit and adds review proposals for continuity when a handoff is interrupted or an action is repeated. These proposals clarify observable business outcomes for team discussion without selecting a technical solution or approving new scope.
 
 ## 2. Business problem and hypothesis
 
@@ -109,7 +113,7 @@ These are desired outcomes. Proposed demo treatments are recommendations for tea
 | --- | --- | --- | --- |
 | **BR-01** | Accept an imperfect expression of curiosity without an exact keyword. | A vague description becomes an intent the learner can confirm or correct, with limited clarification. | Core proposal: text input. Spoken explanations, images, or shared artifacts are opportunities to assess for user benefit, not committed demo inputs. |
 | **BR-02** | Use relevant profile and long-term information while allowing correction and control. | Background and usual preferences remain distinct from the current need. A minimal profile can still participate. | Core: a small user-entered profile and one meaningful ongoing preference. Automated enrichment deferred. |
-| **BR-03** | Receive current intent through the dedicated interface or authorized host context. | Learners understand what context is shared, can stop sharing, and can continue the same activity through supported entry points. | Explicit entry plus one desired connector journey. Host access and permitted actions require verification. |
+| **BR-03** | Receive current intent through the dedicated interface or authorized current host conversation, alongside Further's user understanding and live social context. | Learners understand what context is shared, can stop sharing, and can continue the same activity through supported entry points. A relevant conversation signal affects Further's interpretation and explained recommendation. | Explicit entry plus one desired contextual connector journey. Host access and permitted actions require verification. |
 | **BR-04** | Infer a useful, correctable view of concept, purpose, concept-specific knowledge, and connection needs. | An interpretation follows the common attribute meanings, preserves uncertainty, and responds to the user's correction. | Core: genuine model-supported interpretation. Exact attributes and confidence treatment follow agreement. |
 | **BR-05** | Relate interests semantically and at different levels of specificity. | Different wording connects when appropriate. Unrelated goals remain separate even when profiles coincide. | Core: narrow concept relationships or hierarchy. No algorithm chosen. |
 | **BR-06** | Refresh intent and participation as people arrive, change goals, or leave. | Actual changes affect the relevant authorized views and recommendations, including an ongoing activity resumed through another interface. Stale intent and presence cease to dominate. | Core: independent clients and real state changes. Freshness thresholds, simultaneous goals, and history policy remain open. |
@@ -127,7 +131,7 @@ These are desired outcomes. Proposed demo treatments are recommendations for tea
 | **BR-18** | Remain responsive and useful as activity and the cost of understanding and recommending grow. | Measurements state tested activity, response time, freshness, cost where available, and degradation. Quality is assessed alongside speed and cost. | Core: bounded measurement and a credible growth argument. No model split, algorithm, scale target, or universal real-time guarantee is selected. |
 | **BR-19** | Evaluate connection quality and learning usefulness. | Measure time to relevant connection, successful joins, mutual participation, and voluntary fit/usefulness feedback. | Core: basic outcomes. Explain-back optional. Longitudinal improvement and return need a later pilot. |
 | **BR-20** | Maintain a consistent, versioned contract for profile, long-term, and current-task attributes. | The same field has the same meaning across users and supported interfaces. Values differ by person and can evolve without inventing new per-user definitions. Unknowns remain explicit. | Core: demonstrate a small shared attribute set. Detailed JSON schema is a later technical deliverable. |
-| **BR-21** | Revise user understanding at the appropriate duration and scope. | A temporary need changes the current activity without automatically erasing a usual preference. A confirmed lasting correction remains available in a later interaction. | Core proposal: demonstrate a situational correction and a separately confirmed lasting update. Wider retention, expiry, and promotion policies remain open. |
+| **BR-21** | Revise user understanding at the appropriate duration and scope. | A temporary need changes the current activity without automatically erasing a usual preference. A confirmed lasting correction remains available in a later interaction. | Proposed evidence: a situational correction and a separately confirmed lasting update. The team must decide whether the lasting-update demonstration belongs in the hackathon scope. Wider retention, expiry, and promotion policies remain open. |
 | **BR-22** | Distinguish understanding the user from recommending a suitable connection. | The team can show what Further understood, how a correction changed that understanding, and how recommendations reflect the updated criteria and live opportunities. | Core: both capabilities must function. Model sizes, routing, clusters, vectors, and hybrid processing are later implementation choices. |
 
 ## 6. Social brain behavior
@@ -178,15 +182,26 @@ These are business illustrations, not approved wireframes or user stories.
 
 1. A person begins in Further with a Python project obstacle. Further has their authorized background and usual preference for learning with peers.
 2. Further interprets the immediate need and suggests an eligible person, with a reason connected to the goal.
-3. The person continues the same activity through Muse without re-entering the relevant context.
+3. The person continues the same activity through Muse without re-entering the relevant context. The authorized current conversation supplies input that Further considers alongside the ongoing user understanding and live community state.
 4. Through Muse they clarify that this particular problem needs an experienced helper. Further updates the current need and reconsiders its recommendation.
 5. Returning to Further shows the corrected activity and current result. The usual peer-learning preference remains available because the clarification concerned this problem.
 6. The participants choose whether to connect and reach a genuine shared interaction.
-7. In a separate lasting-change example, the person confirms a general preference change and can see it reflected in a later interaction.
+7. If the team includes the proposed lasting-change demonstration, the person separately confirms a general preference change and can see it reflected in a later interaction.
 
 The project lead called the proposed host **Muse**. Its exact identity, connector mechanism, context access, and permitted actions remain unverified. Only authorized context participates in this journey. A test client can illustrate the service boundary, but does not prove a working Muse integration.
 
 One successful connector demonstrates continuity and a reusable approach. It does not establish support for every application. When an operation is unavailable in a host, the experience should explain the limit and preserve the activity when handing back to Further.
+
+**Contextual social-brain proof:** one scenario is enough. Show how a relevant signal from the authorized current conversation changes Further's understanding of the need and the reasoning it presents for a live social suggestion. For example, the conversation reveals that the learner needs experienced help with a specific Python bug rather than a general learning peer. The same candidate may still fit, but the current criteria and explanation must reflect that signal. A canned answer or a successful connector request alone does not establish this proof. The demonstration must also use actual willingness and availability.
+
+**Review proposals: continuity under interruption.** The following cases extend the evidence for BR-09, BR-11, BR-14, BR-16, and BR-21. They are proposed business outcomes for team agreement, not approved implementation tasks. The team should choose representative cases within its demo boundary and keep the others as explicit remaining decisions.
+
+| Situation | Proposed observable outcome | Decision still needed |
+| --- | --- | --- |
+| An earlier interpretation arrives after the person has corrected the current need. | The earlier result does not silently replace the explicit correction. Both interfaces explain which need is current and whether a suggestion still needs reconsideration. | How to resolve competing updates and how quickly each interface reflects the accepted correction. |
+| A connector handoff is interrupted or times out before the person knows the outcome. | Returning to either supported interface reveals the same ongoing activity and the actual current connection status, or clearly explains why resumption is unavailable. | Resumption, expiry, waiting, and fallback expectations. |
+| The person repeats an accept or join action after an unclear response. | The person can establish what happened without creating duplicate connections or implying fresh consent from the other participant. | Which repeated actions require confirmation and what counts as one connection. |
+| The person ends sharing with the host. | The host can no longer read or change the withdrawn context through Further. The person can understand what remains available in Further under the agreed retention policy. | Withdrawal timing, retained information, and the treatment of an ongoing connection. |
 
 ### C. Live opportunity
 
@@ -227,7 +242,9 @@ The audience should see a complete business story: a rough need becomes a useful
 | Does Further add social intelligence? | Related goals with different wording connect, unrelated/incompatible goals do not | Positive and negative cases to agree |
 | Is it actually live? | Independent clients, timestamps, changes after arrival/intent/departure | Required demonstration, freshness threshold open |
 | Does the experience carry across interfaces? | Resume the same activity without re-entry; observe a correction through the other supported interface | Desired connector demonstration, host capability unverified |
-| Does memory change at the right scope? | Temporary expert help preserves the usual peer preference; a confirmed lasting change appears later | Demonstration proposed, broader policy open |
+| Does the current conversation inform a social suggestion? | An authorized conversation signal affects the interpreted need and explained recommendation, alongside current willingness and availability | One contextual scenario is sufficient. A connectivity-only response is insufficient. |
+| Does continuity remain understandable after an interruption? | A representative late-result, interrupted-handoff, repeated-action, or withdrawn-sharing case shows current state and participant choice accurately | Review proposals in journey B. Cases and expected timing need team agreement. |
+| Does memory change at the right scope? | Temporary expert help preserves the usual peer preference; if included, a separately confirmed lasting change appears later | Situational correction proposed. Inclusion of lasting-update proof and broader policy require team agreement. |
 | Is there a suitable available opportunity? | Eligible-candidate coverage and an honest no-match case | Initial population and acceptable fallback to agree |
 | Can a suggestion become a connection? | Time to relevant result, acceptance, successful shared join, participation | Targets to agree |
 | Is it useful? | Voluntary fit/usefulness feedback from both people, mutual participation, and later voluntary return | Hypothesis to test, no improvement claim yet. Explain-back remains optional for learning scenarios. |
@@ -288,6 +305,7 @@ The practice-question split remains deferred. Model sizes, vector or hybrid proc
 | --- | --- |
 | 0.1 | Initial business requirements reset, broader social brain, and proposed connector access. |
 | 0.2 | Continuity across interfaces, a consistent user-state contract, selective lasting updates, and distinct understanding and recommendation capabilities. Added proposed acceptance evidence and unresolved business choices. |
+| 0.3 | Explicit current-conversation social-brain proof and proposed continuity cases for late results, interrupted handoffs, repeated actions, and withdrawn sharing. No architecture or team scope approval. |
 
 This public document records product requirements and illustrative scenarios. It does not reproduce private conversations or imply that the team has approved the revised baseline.
 

@@ -1,6 +1,6 @@
 # Further: team discussion
 
-**Draft v0.2, October 27, 2026.** This guide records the project lead's clarified direction and the choices that still need team agreement. It is not a delivery backlog. Read [Business requirements](BUSINESS_REQUIREMENTS.md) and use the [three slides](FURTHER_DISCUSSION_SLIDES.html) for the meeting.
+**Draft v0.3, October 28, 2026.** This guide records the project lead's clarified direction and the choices that still need team agreement. It is not a delivery backlog. Read [Business requirements](BUSINESS_REQUIREMENTS.md) and use the [three slides](FURTHER_DISCUSSION_SLIDES.html) for the meeting.
 
 ## Shared starting point
 
@@ -15,9 +15,10 @@ The hackathon evidence must be genuine: meaningful Meta inference, actual changi
 | Topic | Project lead's direction | Remaining boundary |
 | --- | --- | --- |
 | Interfaces | One continuing experience through Further and Muse. A working connector demonstrates the pattern. | Verify the host and the actions needed for the desired round trip. Other applications require their own compatible support. |
+| Contextual connector proof | Use the authorized current conversation alongside Further's social brain. One scenario can demonstrate the value. | Show the signal's effect on the understood need and explained live suggestion. A canned answer or connectivity check is insufficient. |
 | Full product experience | Further's UI should show more than the Muse practice-question examples. | Exact surfaces and the division of example questions remain deferred. |
 | User information | A shared metadata contract with profile, evolving long-term, and current-task information. Field meanings stay consistent while each person's values change. | Minimum fields, unknown values, expiry, and source/status treatment need agreement. Detailed JSON design follows technical requirements. |
-| Corrections | Current needs and corrections influence matching. A current interaction may also revise lasting understanding. | Preserve temporary exceptions. Demonstrate confirmation for lasting changes; settle the wider promotion policy explicitly. |
+| Corrections | Current needs and corrections influence matching. A current interaction may also revise lasting understanding. | Preserve temporary exceptions. Agree whether the proposed lasting-update proof belongs in the demo. Any included lasting change uses confirmation; settle the wider promotion policy explicitly. |
 | Further's intelligence | Maintaining user understanding and recommending connections are distinct business capabilities. | Model size and architecture choices remain open. |
 | Scale and additional inputs | Consider responsiveness, cost as usage grows, and the value of multimodal input. | Define measurable business expectations before choosing implementations or making performance claims. |
 | Work sequence | Continue business requirements and broader product reasoning first. | Technical requirements, stories, tasks, and ownership follow project-lead and team direction. |
@@ -49,6 +50,7 @@ A useful opening question for the next conversation is: **when someone changes f
 | No suitable match | State the lack of an eligible available candidate honestly. Offer only an agreed alternative without silently changing constraints. | Choose fallback and waiting expectations |
 | Primary success measure | Time to a useful, mutually accepted connection, with feedback from both participants. | Choose the primary measure and targets |
 | Multiple goals | A task-specific correction should not overwrite unrelated goals. | Simultaneous-goal scope and switching behavior open |
+| Continuity under interruption | Review proposed outcomes for late results, interrupted handoffs, repeated actions, and withdrawn sharing in journey B of the requirements. | Team must choose representative cases, current-state expectations, and acceptable timing. No retry or conflict policy is approved. |
 | Events and watch parties | Retain the wider vision and assess an explicit demo scope tradeoff. | Unresolved |
 | Additional input formats | Include an input only if it helps someone express a need or improves the connection enough to justify scope. | Multimodal opportunity remains open |
 | Learning evaluation | Connection fit/usefulness first. Facilitation and explain-back may support the chosen learning scenario. | Unresolved |
@@ -60,11 +62,12 @@ These are decision prompts, not assigned implementation work.
 | Step | What the audience should observe |
 | --- | --- |
 | Begin in Further | A project obstacle, relevant profile, and usual peer-learning preference lead to an understandable recommendation. |
-| Continue through Muse | The same ongoing activity is available without re-entering the relevant context, through a verified authorized connector. |
+| Continue through Muse | The same ongoing activity is available without re-entering the relevant context, through a verified authorized connector. The current conversation informs Further alongside its user understanding and live social context. |
 | Correct the immediate need | The person asks for experienced help with this problem. Further updates the current criteria and reconsiders the result. |
 | Return to Further | The corrected activity and current recommendation appear consistently. The usual peer preference remains available. |
 | Establish useful participation | The relevant people choose to connect and genuinely interact. Their willingness is not inferred from mere availability. |
 | Show a limit | A no-match or unavailable case has an honest outcome and an agreed next step. |
+| Review interruption behavior if included | A chosen handoff interruption or repeated action reveals actual current state and preserves participant choice. |
 | Show a lasting change if included | A separately confirmed enduring preference remains available in a later interaction. |
 
 A changed criterion does not necessarily require a different recommended person. The result and explanation must reflect the latest need and actual availability.
@@ -77,7 +80,7 @@ The discussion raised lightweight models for attribute inference, larger models 
 
 ## Baseline approval record
 
-- Requirements version for review: **0.2**
+- Requirements version for review: **0.3**
 - Project lead's clarified direction: **Recorded above**
 - Full team review: **Pending**
 - Approved demonstration scope: **Pending**
