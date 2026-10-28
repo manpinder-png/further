@@ -9,7 +9,8 @@ Further maintains an evolving understanding of what someone wants to learn now a
 ## Discussion materials
 
 - [Business requirements](docs/BUSINESS_REQUIREMENTS.md): 22 requirements covering product value, continuity, evolving user context, proposed demonstration evidence, and open decisions.
-- [Three discussion slides](docs/FURTHER_DISCUSSION_SLIDES.html): download the HTML file and open it in a browser. Use the navigation buttons or left/right arrow keys. Narrow screens show all three slides in a scrolling reading layout. It works offline and includes a print layout for three slides.
+- [Interactive story and decision worksheet](docs/FURTHER_DISCUSSION_SLIDES.html): eight chapters follow a learner from a rough question to a useful connection, including changed intent, continuity, mutual choice, and no-match behavior. Fictional examples explain the proposed product. The local manual tally helps the team compare its own candidate directions.
+- [Peer discussion guide](docs/PEER_DISCUSSION_GUIDE.md): a concise speaking route, a fair decision process, and the original application baseline.
 - [Team discussion](docs/DISCUSSION.md): clarified direction, the continuing discussion agenda, and decisions to resolve before technical design.
 - [Shared project](https://github.com/users/manpinder-png/projects/1): previous bootstrap tasks have been retired. New work follows team agreement.
 
@@ -34,5 +35,5 @@ The connector proof should use the authorized current conversation alongside Fur
 
 ## Hackathon context
 
-Further is a team entry in the Startup track of the Meta Global AI Developer Hackathon. The recorded submission deadline is November 4, 2026 at 9 p.m. Eastern. The intended demo needs genuine live behavior and meaningful Meta model use. The requirements distinguish this proposed demonstration from the broader product vision.
+The original approved application selected **Indie Dev Track** and proposed Amit as a teammate subject to his separate acceptance. The final track and eligible team are recorded at project submission. Indie entrants may form teams; having teammates alone does not establish a Startup entry. The recorded submission deadline is November 4, 2026 at 9 p.m. Eastern. The intended demo needs genuine live behavior and meaningful Meta model use. The requirements distinguish this proposed demonstration from the broader product vision.
 

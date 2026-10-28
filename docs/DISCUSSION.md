@@ -1,6 +1,6 @@
 # Further: team discussion
 
-**Draft v0.3, October 28, 2026.** This guide records the project lead's clarified direction and the choices that still need team agreement. It is not a delivery backlog. Read [Business requirements](BUSINESS_REQUIREMENTS.md) and use the [three slides](FURTHER_DISCUSSION_SLIDES.html) for the meeting.
+**Draft v0.3, October 28, 2026.** This guide records the project lead's clarified direction and the choices that still need team agreement. It is not a delivery backlog. Read [Business requirements](BUSINESS_REQUIREMENTS.md) and use the [interactive story and decision worksheet](FURTHER_DISCUSSION_SLIDES.html) with the [peer discussion guide](PEER_DISCUSSION_GUIDE.md) for the meeting.
 
 ## Shared starting point
 
@@ -89,3 +89,9 @@ The discussion raised lightweight models for attribute inference, larger models 
 
 The project lead will manage stories and tasks with the team after agreement. This guide and the BR identifiers do not create a backlog or assign owners.
 
+
+## Team comparison meeting
+
+The interactive story explains Further through one fictional learner's changing need. It adds a local manual tally for the team's actual candidate directions and fields for an outcome sentence, initial demo boundary, explicit deferrals, and open questions. No votes are prefilled and the worksheet does not decide or approve requirements automatically. Agree the voting method and record the resulting baseline explicitly before technical design.
+
+The verified original application selected Indie Dev Track and described Build for Your World. It proposed an adult technical pilot, explicit waiting/no-match handling, Meta-supported clarification and facilitation, and evaluation of connection and learning usefulness. Later connector and continuing-context requirements expand that baseline. The role of prompts and teach-back remains an intentional scope decision.
