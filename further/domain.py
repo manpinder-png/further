@@ -503,8 +503,12 @@ def pick_group(profile: Profile, exclude=(), size: int = 4) -> Dict[str, Any]:
     newer = len(members) - ahead - same
     parts = [str(n) + " " + label for n, label in ((ahead, "ahead of you"), (same, "at your level"),
                                                    (newer, "newer to it")) if n]
-    rationale = ("Mixed tiers on purpose: " + ", ".join(parts) + ". " if parts else "") + (
-        "All online now, all in " + profile.language + ".")
+    if members:
+        rationale = ("Mixed tiers on purpose: " + ", ".join(parts) + ". " if parts else "") + (
+            "All online now, all in " + profile.language + ".")
+    else:
+        rationale = ("No sample learners in " + cluster["label"] + " are online in " + profile.language
+                     + " right now. Try another language or edit your focus area.")
     result = [dict(l, role_hint=_role_hint(l["tier"], profile.tier),
                    explain_back=cluster["takeaways"][i % len(cluster["takeaways"])])
               for i, l in enumerate(members)]

@@ -88,7 +88,9 @@ class GroupTests(unittest.TestCase):
     def test_language_is_a_hard_filter(self):
         group = pick_group(profile(language="Punjabi"))
         self.assertTrue(all(m["language"] == "Punjabi" for m in group["members"]))
-        self.assertLessEqual(len(group["members"]), 1)
+        self.assertEqual(group["members"], [])
+        self.assertIn("No sample learners", group["rationale"])
+        self.assertEqual(group["script"], [])
 
     def test_bad_exclude(self):
         with self.assertRaises(ValueError):
