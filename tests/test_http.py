@@ -65,6 +65,55 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request("/api/matches", "x" * 8193)[0], 413)
         self.assertEqual(self.request("/api/matches", "{}", {"Content-Type": "text/plain"})[0], 415)
 
+    def test_journey_routes_end_to_end_in_demo_mode(self):
+        status, _, body = self.request("/api/learners")
+        learners = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(learners["learners"]), 80)
+        self.assertTrue(learners["sample"])
+        self.assertEqual(len(learners["clusters"]), 8)
+
+        status, _, body = self.request("/api/profile", json.dumps({"intent": "why do GPUs matter for ML"}))
+        made = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(made["provider"], "demo")
+        profile = dict(made["profile"], tier=2)
+
+        status, _, body = self.request("/api/placement", json.dumps({"profile": profile}))
+        self.assertEqual((status, json.loads(body)["cluster"]), (200, "gpu"))
+
+        status, _, body = self.request("/api/group", json.dumps({"profile": profile, "exclude": []}))
+        group = json.loads(body)
+        self.assertEqual(status, 200)
+        ids = [m["id"] for m in group["members"]]
+        self.assertEqual(len(ids), 4)
+
+        status, _, body = self.request("/api/wrapup", json.dumps({
+            "profile": profile, "members": ids, "marked": ids[:1],
+            "explanation": "Thousands of simple cores run the same multiply in parallel for training."}))
+        result = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["tier_after"], 3)
+
+    def test_journey_routes_reject_bad_bodies(self):
+        for path, body in (("/api/profile", {"intent": 7}), ("/api/profile", []),
+                           ("/api/group", {"profile": {"name": "x"}}), ("/api/placement", {}),
+                           ("/api/wrapup", {"profile": None})):
+            with self.subTest(path=path):
+                self.assertEqual(self.request(path, json.dumps(body))[0], 400)
+
+    def test_health_lists_providers_without_secrets(self):
+        status, _, body = self.request("/api/health")
+        health = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(health["ai_mode"], "demo")
+        self.assertEqual(health["providers"]["order"], ["demo"])
+
+    def test_map_script_is_served(self):
+        status, headers, _ = self.request("/map.js")
+        self.assertEqual(status, 200)
+        self.assertIn("javascript", headers["Content-Type"])
+
     def test_home_page_security_headers_and_mode_label(self):
         status, headers, body = self.request("/")
         self.assertEqual(status, 200)
