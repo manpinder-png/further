@@ -69,6 +69,10 @@ Request: `{"profile": {...}, "exclude": [learner ids already shown]}`. Returns u
 
 Request: `{"profile": {...}, "explanation": "<0-400 characters>", "members": [ids], "marked": [ids you marked]}`. Returns tier_before, tier_after, tier_reason, marks_received (simulated from explanation length, flagged by marks_simulated), reputation_gained with a breakdown, and a memory-trail entry. Rules: +1 tier (max 5) with at least six words and at least one mark; reputation is +10 per mark received, +3 per mark given, +5 for finishing. Tier and reputation are separate, and nothing is ranked across users.
 
+### POST /mcp (stretch stub)
+
+Minimal JSON-RPC 2.0: initialize, tools/list, tools/call. Tools: share_my_intent (intent → profile, via the provider chain) and find_my_group (profile → mixed-tier sample group). Tool errors come back as `isError: true` results; unknown methods and tools are JSON-RPC errors. Local stub only: no sessions, streaming or auth, and the same loopback and origin checks as every other route.
+
 ## Provider fallback
 
 Order comes from FURTHER_PROVIDERS (default meta,fireworks,baseten,demo); demo is always last. A provider without settings is skipped. An HTTP error, timeout, unparsable JSON or schema/validation failure moves on to the next provider and is reported in `fallbacks`. FURTHER_AI_MODE=demo forces demo only; FURTHER_AI_MODE=meta forces Meta only and turns failures into a visible 502 with no fallback, the starter's original behaviour. Fireworks and Baseten share one OpenAI-compatible urllib client; their URLs and model IDs are deliberately not defaulted (see TODOs in providers.py).

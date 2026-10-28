@@ -121,7 +121,7 @@ Nothing is saved: reloading the page starts over.
 - Login and room membership authorization.
 - Deployment (planned on Modal) with rate limiting, TLS and spend controls.
 - Let a Meta model assess explain-backs against a stated rubric, instead of the simulated marks.
-- Stretch: an MCP endpoint (`share_my_intent`, `find_my_group`) so Further could be opened from Muse, Claude or ChatGPT.
+- MCP: a local stub already exists at `POST /mcp` (JSON-RPC `initialize`, `tools/list`, `tools/call` with `share_my_intent` and `find_my_group`). It has no sessions, streaming or auth, and it only listens on loopback. Making it reachable from Muse, Claude or ChatGPT needs deployment, auth and the full MCP transport.
 
 ## Hackathon target
 

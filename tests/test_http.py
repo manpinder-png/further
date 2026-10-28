@@ -109,6 +109,27 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(health["ai_mode"], "demo")
         self.assertEqual(health["providers"]["order"], ["demo"])
 
+    def test_mcp_stub_lists_and_calls_tools(self):
+        def rpc(method, params=None, request_id=1):
+            body = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
+            status, _, raw = self.request("/mcp", json.dumps(body))
+            self.assertEqual(status, 200)
+            return json.loads(raw)
+        self.assertIn("protocolVersion", rpc("initialize")["result"])
+        names = [tool["name"] for tool in rpc("tools/list")["result"]["tools"]]
+        self.assertEqual(names, ["share_my_intent", "find_my_group"])
+        shared = rpc("tools/call", {"name": "share_my_intent", "arguments": {"intent": "React hooks basics"}})
+        profile = json.loads(shared["result"]["content"][0]["text"])["profile"]
+        self.assertEqual(profile["focus_area"], "React basics")
+        group = rpc("tools/call", {"name": "find_my_group", "arguments": {"profile": profile}})
+        self.assertTrue(json.loads(group["result"]["content"][0]["text"])["sample"])
+        bad = rpc("tools/call", {"name": "share_my_intent", "arguments": {"intent": 3}})
+        self.assertTrue(bad["result"]["isError"])
+        self.assertEqual(rpc("nope")["error"]["code"], -32601)
+        self.assertEqual(rpc("tools/call", {"name": "delete_everything"})["error"]["code"], -32602)
+        self.assertEqual(self.request("/mcp", json.dumps({"id": 1}))[0], 200)
+        self.assertEqual(self.request("/mcp", json.dumps({}), {"Origin": "https://attacker.example"})[0], 403)
+
     def test_map_script_is_served(self):
         status, headers, _ = self.request("/map.js")
         self.assertEqual(status, 200)

@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from .ai import ProviderError, create_plan, create_profile
 from .domain import (Goal, Profile, SAMPLE_LEARNERS, SAMPLE_PEERS, cluster_summary,
                      nearest_cluster, online_count, pick_group, rank_peers, wrap_up)
+from .mcp import handle as handle_mcp
 from .providers import describe_providers
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,6 +74,8 @@ ROUTES = {
     "/api/placement": post_placement,
     "/api/group": post_group,
     "/api/wrapup": post_wrapup,
+    # Stretch: local MCP stub (JSON-RPC). Invalid JSON-RPC gets a JSON-RPC error, not a 400.
+    "/mcp": lambda body: handle_mcp(body) or {},
 }
 
 
