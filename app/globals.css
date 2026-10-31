@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* Mission-control chrome tokens (DESIGN §2.1). One accent: --signal. */
+@theme {
+  --color-bg: #0a0a0b;
+  --color-panel: #111113;
+  --color-panel-2: #16161a;
+  --color-line: #232327;
+  --color-line-2: #2e2e34;
+  --color-text: #ece9e4;
+  --color-muted: #85858c;
+  --color-dim: #55555c;
+  --color-signal: #f26b1d;
+  --color-signal-dim: #3a1d0c;
+  --color-ok: #3ddc84;
+  --color-warn: #f5c542;
+  --color-err: #ff5d5d;
+  --color-diamond: #4ddfe6;
+  --color-gold: #f5c542;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-pixel: var(--font-silkscreen), monospace;
+}
+
+:root { color-scheme: dark; }
+html, body { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+/* Bracket label: [ MISSIONS ] */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.label::before { content: "[ "; color: var(--color-dim); }
+.label::after { content: " ]"; color: var(--color-dim); }
+
+.pixel { font-family: var(--font-pixel); letter-spacing: 0.02em; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 20px; padding: 0 7px;
+  border: 1px solid var(--color-line-2);
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-muted); white-space: nowrap;
+}
+.chip-demo { border-color: #4a2a14; color: #f2a26b; background: #1c120b; }
+.chip-ok { border-color: #1d4a31; color: var(--color-ok); }
+.chip-err { border-color: #5a2323; color: var(--color-err); }
+.chip-signal { border-color: var(--color-signal); color: var(--color-signal); }
+
+.dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 34px; padding: 0 14px;
+  border: 1px solid var(--color-line-2);
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--color-text); background: var(--color-panel-2);
+  transition: border-color .15s, background .15s, color .15s;
+}
+.btn:hover { border-color: var(--color-muted); }
+.btn:focus-visible, .map-btn:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 1px solid var(--color-signal); outline-offset: 1px;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--color-signal); border-color: var(--color-signal); color: #0a0a0b; font-weight: 600; }
+.btn-primary:hover { background: #ff7d33; border-color: #ff7d33; }
+.btn-ghost { background: transparent; }
+
+.map-btn { width: 30px; height: 30px; font-size: 14px; color: var(--color-text); }
+.map-btn:hover { background: var(--color-panel-2); }
+
+.field {
+  width: 100%; background: var(--color-bg); border: 1px solid var(--color-line-2);
+  padding: 8px 10px; font-size: 13px; color: var(--color-text);
+}
+.field::placeholder { color: var(--color-dim); }
+
+/* Hairline scrollbars */
+.scroll { scrollbar-width: thin; scrollbar-color: #2e2e34 transparent; overflow-y: auto; }
+
+/* Faint dot grid for empty panels and pages */
+.grid-bg {
+  background-image: radial-gradient(circle at 1px 1px, #1d1d22 1px, transparent 0);
+  background-size: 16px 16px;
+}
+
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+.cursor-blink { animation: blink 1s steps(1) infinite; }
+@keyframes slideup { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.enter { animation: slideup .25s ease-out both; }
+@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.scanbar { position: relative; overflow: hidden; }
+.scanbar::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(242,107,29,.35), transparent);
+  animation: scan 1.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* Mermaid diagrams on the dark card */
+.mermaid-wrap svg { max-width: 100%; height: auto; }

@@ -1,59 +1,90 @@
 # Further
 
-Learn something. Move forward together.
+*Your feed knows what keeps you scrolling. Further knows what you're trying to understand.*
 
-Further connects people who are available now and want to understand a specific concept. AI helps turn a vague interest into a useful question and guides a short session; people do the explaining and reasoning.
+Say what you're curious about, even vaguely. A concept map grows from that sentence, one block at a time. Every block has one short, real, cited source. Blocks you explore turn from cobblestone to iron, gold and diamond; ones you skip fade back into fog. When someone nearby on the map is a step ahead on a neighbouring concept, you can both accept a short AI-facilitated session where each of you teaches the piece you know.
 
-**Status: working local starter, not the finished hackathon product.** The included peers are explicitly labelled samples. Matching is a transparent keyword baseline. Real people, shared live rooms, persistence, authentication, and production deployment are tracked in the backlog.
+![Map after a voice curiosity](docs/screenshots/01-bloom.jpg)
 
-## Start here
+## Run it
 
-Requires Python 3.9 or newer. No package install, Node.js, API key, or paid service is needed for the default demo.
+Requires Node 20+.
 
-    git clone https://github.com/manpinder-png/further.git
-    cd further
-    python3 -m further
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
 
-Open http://127.0.0.1:8000. On Windows, use python instead of python3 if needed.
+With no keys, every AI and realtime system runs in **demo mode**: labeled demo data, no network calls to Meta, no charges. The top bar shows each system's status (green live, orange demo). Copy `.env.example` to `.env.local` and add keys to switch systems to live one at a time.
 
-Try “Why are GPUs useful for machine learning?”, select English and 15 minutes, find a sample peer, and open a practice session. Explain the question out loud, use the discussion prompts, and try the independent understanding check.
+```bash
+npm run typecheck
+npm run build
+```
 
-    python3 -m unittest discover -s tests -v
+## The demo (3 minutes)
 
-The server binds to loopback only. This starter is intended for local development; a deployable multi-user service is a separate work item.
+| # | Beat | Where |
+|---|---|---|
+| 1 | Voice → bloom: tap the mic, say "why does training AI need special chips?" | Map, command bar |
+| 2 | Tap **Matrix multiplication**: hook with citation, verified clip, flowchart, explain it back | Inspector |
+| 3 | **Your brain this week**: the map replays day 1 → now | Map, bottom left |
+| 4 | Match request (60s), both accept, jigsaw session, both maps update | Match modal → `/session` |
+| 5 | From any MCP client: `add_curiosity("what is HBM memory")`. The node appears on the open map | `/connectors` (or a real client) |
 
-## Team workspace
+## Screens
 
-- [Project board](https://github.com/users/manpinder-png/projects/1)
-- [Repository issues](https://github.com/manpinder-png/further/issues)
-- [Product brief](docs/PRODUCT.md)
-- [Architecture and API](docs/ARCHITECTURE.md)
-- [Workstreams and milestones](docs/DELIVERY.md)
-- [Contribution guide](CONTRIBUTING.md)
+| Route | What it's for |
+|---|---|
+| `/` | Mission control: missions, live agent log, explorers, world map, inspector, command bar |
+| `/session` | Jigsaw room: phases, facilitator, Llama Guard on every message, block/report |
+| `/profile` | Three-layer profile, matching settings, MCP token, inventory |
+| `/connectors` | MCP server details, tools, and a live JSON-RPC console |
+| `/ops` | Every agent, Meta model, requirement and production check, with live/demo status and code location |
 
-Pick an issue, agree ownership on the board, and use a short branch and pull request. Initial workstream suggestions are UI, presence/matching, room collaboration, and AI/evaluation. These are unassigned suggestions until the team agrees who owns each.
+## Code map
 
-## Optional Meta model integration
+```
+app/
+  page.tsx                 mission control (map screen)
+  session/ profile/ connectors/ ops/
+  api/
+    expand/                F2  SSE streaming expansion + canonicalization
+    transcribe/            F1  Muse Voice Transcribe
+    card/[slug]/           F3  node card
+    resources/verify/      F3  oEmbed / HTTP source check (live, host-allowlisted)
+    explain/               F4  rubric grading
+    match/                 F7  scoring + handshake decisions
+    session/[id]/message/  F8  Llama Guard → broadcast → facilitator
+    mcp/                   F10 JSON-RPC MCP server
+    inbox/                 demo stand-in for Supabase Realtime
+    health/                status pills
+components/
+  map/                     canvas world: pixel textures, fog, blocks, paths, heads
+  mission/                 left rail, inspector, command bar, match modal, time-lapse
+  shell/ ui/
+lib/
+  math.ts                  bloom/fade math (plan §5.4), shared by map + time-lapse + server
+  matching.ts              match score (plan §5.5)
+  canonicalize.ts          cosine + threshold, demo embedding
+  schemas.ts               Zod for every API boundary
+  requirements.ts          the table rendered on /ops
+  client/                  store (event log is the source of truth) + hooks
+  server/                  config, Meta client, moderation, rate limit, observability
+  demo/seed.ts             all demo data, in one place
+supabase/migrations/       schema + RLS (plan §5.1)
+docs/DESIGN.md             design process, decisions, requirement map, iteration log
+```
 
-The server-side adapter is implemented but has not been tested against a live account. Demo mode never calls a provider.
+## For backend owners
 
-Copy .env.example to .env, add a valid MODEL_API_KEY locally, and explicitly change FURTHER_AI_MODE to meta. Restart the server. Selecting a peer will then request a session plan through Meta Model API. Confirm account credits/billing before enabling live calls.
+Each system has a typed seam. Fill in the live branch; the UI doesn't change.
 
-- Base URL: https://api.meta.ai/v1
-- Model ID: muse-spark-1.3 (configurable; verify availability in your account)
-- Endpoint: /chat/completions
-- Keys stay server-side and .env is ignored by git.
-- Live errors are shown as errors; the app does not disguise a failed live call as generated output.
-- The adapter has a timeout, bounded output, JSON validation, and no automatic paid retries.
+- **Connor:** `lib/server/meta.ts` (Muse Spark, transcribe), `app/api/expand` (swap demo embedding for pgvector), `app/api/card` (grounding), `app/api/mcp` (move to the official TS SDK), RLS/rate limit/Sentry.
+- **Amit:** Presence channel `explorers` + 15s scoring job using `lib/matching.ts`, `match_requests` handshake, Broadcast `session:{id}`, `lib/server/moderation.ts` (Llama Guard).
+- **Manpinder:** `lib/demo/seed.ts` (seed concepts, explorers, sources), eval set for the 0.88 canonicalization threshold.
+- **Sirpreet:** everything in `components/`, `docs/DESIGN.md`.
 
-Official references, checked October 27, 2026: [Meta quickstart](https://dev.meta.ai/docs/quickstart) and [Chat Completions](https://dev.meta.ai/docs/protocols/chat-completions). Fireworks, Modal, and Baseten are evaluation options, not implemented integrations.
+## Honesty rules
 
-## Hackathon target
-
-Startup track, Meta Global AI Developer Hackathon. Submission is due November 4, 2026 at 9 p.m. Eastern. Present only contributions built during the event. The repository must be public and the submission needs an accessible three-minute demo video.
-
-The final product must demonstrate real peer interaction and meaningful Meta model use. This demo-only baseline does not yet satisfy that target. See docs/DELIVERY.md for the acceptance checks.
-
-## License
-
-The team has not selected a software license yet. Resolve this before the final submission.
+Demo data is always labeled `DEMO` / `SEED` in the UI. Seed explorers are never presented as real people, and demo grades, transcripts and facilitator turns are never presented as live model output.

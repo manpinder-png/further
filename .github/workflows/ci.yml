@@ -1,21 +1,17 @@
-name: Starter checks
+name: ci
 on:
-  push:
   pull_request:
-permissions:
-  contents: read
+  push:
+    branches: [main]
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-      - name: Run unit and HTTP contract tests
-        env:
-          FURTHER_AI_MODE: demo
-        run: python -m unittest discover -s tests -v
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

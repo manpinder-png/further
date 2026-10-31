@@ -1,13 +1,13 @@
 # Further development
 
-- Read README.md, docs/PRODUCT.md, and docs/ARCHITECTURE.md before changing behavior.
+- Read README.md and docs/DESIGN.md before changing behavior. The hackathon build plan is the spec; its 3-minute demo is the acceptance test.
+- Stack: Next.js App Router + TypeScript + Tailwind v4. Node 20+.
 - Keep the core goal: concept-level matching between available people; AI facilitates human learning.
-- Preserve explicit labels for sample peers and demo-generated prompts. Never describe fixtures or mock output as real users or live model output.
-- The baseline uses Python's standard library and a browser UI. Keep startup and tests dependency-free unless an agreed issue changes the stack.
-- Run python3 -m unittest discover -s tests -v after functional changes.
-- Never commit .env, credentials, provider keys, private account details, onboarding notes, or user conversation exports.
-- Changes should preserve server-side keys, bounded inputs, same-origin checks, timeouts, and visible provider failures.
-- Keep the loopback-only default. Authentication, durable storage, abuse controls, and live room authorization must precede a public deployment.
-- Use short feature branches and focused PRs. Claim a workstream on the project board before overlapping work.
-- Do not assign teammates by email or invent GitHub handles.
-- Record implementation decisions and remaining demo limitations in the documentation.
+- Preserve explicit labels for seed peers and demo output. Never describe fixtures or demo responses as real users or live model output.
+- lib/math.ts and lib/matching.ts are shared by UI and server. Change them in one place, never fork the formulas.
+- Every API route validates input with Zod (lib/schemas.ts). Server-only modules import "server-only". Never put keys in NEXT_PUBLIC_ vars.
+- Real user data goes only to the non-contributor model (META_MODEL). Contributor models are for dev and evals.
+- Run `npm run typecheck` and `npm run build` before pushing.
+- Never commit .env*, credentials, provider keys, private account details, onboarding notes, or user conversation exports.
+- Record UI decisions in docs/DESIGN.md and update lib/requirements.ts when a requirement's status changes.
+- Use short feature branches and focused PRs.
