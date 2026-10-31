@@ -6,13 +6,14 @@ import { placeNear } from "../layout";
 import { CATALOG } from "../demo/seed";
 import { HANDSHAKE_MS, MATCH_THRESHOLD } from "../matching";
 import { liveInterest } from "../math";
+import { learnerModel } from "../learn";
 import { liveConfigured, liveFetch, persistConcept } from "./live";
 
 let missionId = 1;
 
 /** F2: stream /api/expand and grow the map node by node. */
 export function useExpand() {
-  const { dispatch, say, track, concepts, nodes } = useStore();
+  const { dispatch, say, track, concepts, nodes, events } = useStore();
   const live = useRef({ concepts, nodes });
   live.current = { concepts, nodes };
   const [busy, setBusy] = useState(false);
@@ -30,7 +31,7 @@ export function useExpand() {
         const res = await fetch("/api/expand", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes) }),
+          body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary }),
         });
         const demo = res.headers.get("x-further-mode") === "demo";
         if (!res.ok || !res.body) {
@@ -63,8 +64,19 @@ export function useExpand() {
                 alias[line.slug] = target;
                 say("CANONICALIZE", `"${line.title}" ≈ ${target} (cos ${line.canonical.similarity.toFixed(2)} ≥ 0.88) → reuse`, "ok", demo);
                 const parent = cs[line.edge.from];
-                if (parent && cs[target]) dispatch({ t: "edge", e: { src: line.edge.from, dst: target, kind: line.edge.kind } });
+                if (!cs[target]) {
+                  // Clean-slate bug: reuse assumed the concept was already on
+                  // the map. Add it (catalog data when known) or it's lost.
+                  const known = CATALOG[target];
+                  const pos = placeNear(target, parent?.x !== undefined ? { x: parent.x, y: parent.y! } : undefined, Object.values(cs));
+                  const c = { ...(known ?? {}), slug: target, title: known?.title ?? line.title, hook: known?.hook ?? line.hook, domain: "ai-tech", ...pos };
+                  dispatch({ t: "concept", c, edge: parent ? { src: line.edge.from, dst: target, kind: line.edge.kind } : undefined });
+                  added++;
+                } else if (parent) {
+                  dispatch({ t: "edge", e: { src: line.edge.from, dst: target, kind: line.edge.kind } });
+                }
                 if (!ns[target]) track(target, "seed");
+                dispatch({ t: "missionPatch", id, patch: { added, reused } });
                 continue;
               }
               const existing = cs[line.slug];
@@ -93,12 +105,12 @@ export function useExpand() {
         dispatch({ t: "missionPatch", id, patch: { status: "done", added, reused } });
       } catch (e) {
         say("EXPAND", (e as Error).message, "err");
-        dispatch({ t: "missionPatch", id, patch: { status: "error" } });
+        dispatch({ t: "missionPatch", id, patch: { status: "error", error: (e as Error).message } });
       } finally {
         setBusy(false);
       }
     },
-    [dispatch, say, track],
+    [dispatch, say, track, events],
   );
   return { run, busy };
 }

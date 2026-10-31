@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/client/store";
 import { transcribeBlob, useRecorder } from "@/lib/client/hooks";
 import { liveInterest } from "@/lib/math";
+import Course from "@/components/learn/Course";
 import { blockKindFor } from "@/components/map/pixels";
 import { BlockIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
 import Mermaid from "@/components/ui/Mermaid";
@@ -104,6 +105,8 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
           {card && <p className="mt-2 text-[10px] text-dim">loaded in {loadMs}ms{card.cached ? " · cached per concept" : ""}</p>}
         </section>
 
+        <Course slug={c.slug} title={c.title} />
+
         {card?.resource && <Source r={card.resource} onWatch={() => { track(c.slug, "watch"); say("SYSTEM", `watched source → mastery +0.2 on ${c.slug}`, "ok"); }} />}
 
         {card?.diagram && (
@@ -149,7 +152,7 @@ function Source({ r, onWatch }: { r: Resource; onWatch: () => void }) {
   return (
     <section id="source" className="border-b border-line px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="label">Source [1]</h4>
+        <h4 className="label">Go deeper · cited source [1]</h4>
         {!v ? <span className="chip h-[18px]">checking…</span> : v.ok ? <span className="chip chip-ok h-[18px]">✓ verified · {v.method}</span> : <span className="chip chip-err h-[18px]">✕ dead link</span>}
       </div>
       {id && v?.ok !== false ? (
@@ -264,9 +267,15 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
 }
 
 function MapSummary() {
-  const { nodes, concepts, dispatch } = useStore();
+  const { nodes, concepts, dispatch, edges } = useStore();
   const list = Object.values(nodes);
   const count = (s: string) => list.filter((n) => n.state === s).length;
+  const fading = list.filter((n) => liveInterest(n) < 0.35 && n.mastery < 0.7);
+  const understoodSlugs = new Set(list.filter((n) => n.state === "understood").map((n) => n.slug));
+  const frontierSlug = edges
+    .flatMap((e) => [e.src, e.dst])
+    .find((slug) => nodes[slug]?.state === "seeded" && edges.some((e) => (e.src === slug && understoodSlugs.has(e.dst)) || (e.dst === slug && understoodSlugs.has(e.src))));
+  const resumeSlug = frontierSlug ?? fading[0]?.slug;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-9 shrink-0 items-center border-b border-line px-3"><h2 className="label">Inspector</h2></header>
@@ -281,6 +290,18 @@ function MapSummary() {
             </div>
           ))}
         </div>
+        {(fading.length > 0 || frontierSlug) && resumeSlug && (
+          <div className="mb-5 border border-signal/60 bg-panel-2 px-3 py-2.5">
+            <div className="text-[10px] tracking-[0.14em] text-signal">FOG IS CREEPING BACK</div>
+            <p className="mt-1 font-sans text-[13px] text-text/90">
+              {fading.length} idea{fading.length === 1 ? " is" : "s are"} fading
+              {frontierSlug ? ` · ${concepts[frontierSlug]?.title} is next` : ""}.
+            </p>
+            <button className="btn btn-primary mt-2 h-8 px-3 text-[11px]" onClick={() => dispatch({ t: "select", slug: resumeSlug })}>
+              Resume: {concepts[resumeSlug]?.title}
+            </button>
+          </div>
+        )}
         <h3 className="label mb-2">Legend</h3>
         <ul className="space-y-2 text-[11.5px]">
           <li className="flex items-center gap-2"><BlockIcon kind="cobble" size={16} /> Seeded: on your map, not opened</li>

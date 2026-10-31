@@ -7,7 +7,12 @@ import { useStore } from "@/lib/client/store";
 const EXAMPLES = ["why does training AI need special chips?", "how do chatbots remember things?", "what makes a model smaller?"];
 
 export default function CommandBar() {
-  const { say } = useStore();
+  const { say, nodes, concepts, edges, dispatch } = useStore();
+  const understoodSlugs = new Set(Object.values(nodes).filter((n) => n.state === "understood").map((n) => n.slug));
+  const frontier = edges
+    .flatMap((e) => [e.src, e.dst])
+    .map((slug) => ({ slug, node: nodes[slug] }))
+    .find(({ slug, node }) => node?.state === "seeded" && edges.some((e) => (e.src === slug && understoodSlugs.has(e.dst)) || (e.dst === slug && understoodSlugs.has(e.src))));
   const { run, busy } = useExpand();
   const rec = useRecorder(15_000);
   const [text, setText] = useState("");
@@ -92,6 +97,11 @@ export default function CommandBar() {
           {err ? <span className="text-err">{err}</span> : (
             <>
               <span className="shrink-0 text-dim">TRY</span>
+              {frontier && (
+                <button onClick={() => dispatch({ t: "select", slug: frontier.slug })} className="shrink-0 border border-signal/60 px-2 py-0.5 font-sans text-signal hover:bg-signal hover:text-bg">
+                  Continue: {concepts[frontier.slug]?.title}
+                </button>
+              )}
               {EXAMPLES.map((e) => (
                 <button key={e} onClick={() => submit(e)} disabled={busy} className="shrink-0 border border-line px-2 py-0.5 font-sans text-muted hover:border-muted hover:text-text">{e}</button>
               ))}

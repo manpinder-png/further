@@ -22,9 +22,11 @@ export async function chat(messages: Msg[], opts: { json?: boolean; maxTokens?: 
       max_tokens: opts.maxTokens ?? 800,
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
-    signal: AbortSignal.timeout(20_000),
+    // Muse Spark reasoning makes 20s too tight for teach/course (verified:
+    // client saw "took too long" while the model was still generating).
+    signal: AbortSignal.timeout(90_000),
   });
-  if (!res.ok) throw new Error(`Meta API ${res.status}`);
+  if (!res.ok) throw new Error(`Meta API ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
   const data = await res.json();
   return String(data.choices?.[0]?.message?.content ?? "");
 }
@@ -98,11 +100,13 @@ export async function* streamLines(messages: Msg[]) {
       model: env.metaModel,
       messages,
       stream: true,
-      max_tokens: 1200,
+      // Muse Spark spends ~1.1k tokens reasoning before content; a small
+      // budget returns finish_reason=length with content=null (verified live).
+      max_tokens: 4096,
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(90_000),
   });
-  if (!res.ok || !res.body) throw new Error(`Meta API ${res.status}`);
+  if (!res.ok || !res.body) throw new Error(`Meta API ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let sse = "";
@@ -162,6 +166,10 @@ export async function transcribe(audio: Blob) {
 export const EXPAND_SYSTEM = `You map curiosity into concepts. The user may not know the right words. Infer their intent. Return 5–7 concepts as JSON Lines: first an intent line {"intent","root","rootTitle"}, then one line per concept {"slug","title","hook","edge":{"from","kind"},"difficulty"}. kind is prerequisite|related|part_of. Order them from most approachable to most advanced. Prefer concepts the user's existing map doesn't already cover. Hooks are one sentence and make the user want to tap. No markdown.`;
 
 export const GRADE_SYSTEM = `Grade a learner's spoken explanation of a concept on a 0–3 rubric: 0 off-topic, 1 names the idea, 2 explains the mechanism, 3 explains mechanism and why it matters. Be kind. Return JSON {"score":int,"feedback":"one sentence, under 30 words"}. Never quiz.`;
+
+export const COURSE_SYSTEM = `You are Muse building a 2-minute micro-course for one concept, adapted to how this learner learns. Return JSON {"lessons":[{"title","body","format"}],"adaptedNote"}. Exactly 4 lessons: hook (why care, one vivid sentence + payoff), mechanism (how it actually works, step by step), example (a concrete tiny example with numbers or a picture in words), recall (one question the learner answers in their own words — never a quiz). Bodies under 90 words each, plain language, no markdown. adaptedNote: one sentence naming how you adapted this to the learner (their strengths, pace, style). Build on their strengths; do not repeat what they already understand.`;
+
+export const TEACH_SYSTEM = `You are Muse deciding HOW to teach one concept to THIS learner right now. You study how they learn and choose the single best format — do not default to lecturing. Formats: predict (ask a guessable question, reveal after they choose), manipulate (describe a tiny mental model they can vary: "what happens if X doubles?"), analogy (one vivid comparison, then where it breaks), story (a 3-beat concrete scenario), source-clip (tell them exactly what to look for in the cited source, in under 90 seconds), short-read (a crisp 3-sentence explanation). Return JSON {"format","title","body","interaction":{"prompt","options":[{"label","reveal"}]},"branches":[{"title","why"}],"challenge":{"kind","prompt","options":["3-4 short strings"],"correct":0,"explanation"},"adaptedNote"}. interaction is required for predict/manipulate, optional otherwise. branches: exactly 3 next curiosities this learner can choose, each with why it follows for them. challenge: ALWAYS include one playful activity matched to the format — kind is spot-the-error|order-steps|predict-output|fill-blank, correct is the index of the right option, explanation rewards the reasoning in one sentence. It must be winnable from the body alone. adaptedNote: one sentence on what you observed about this learner and why you chose this format. Body under 110 words. Plain language, no markdown. Never lecture at length; the challenge is a game, not a quiz.`;
 
 export const FACILITATOR_SYSTEM = (a: string, aStrong: string, b: string, bStrong: string, shared: string) =>
   `Two learners. ${a} understands ${aStrong}. ${b} understands ${bStrong}. Both are exploring ${shared}. Run a 10-minute jigsaw. Ask ${a} to explain ${aStrong} in 2 sentences, then ${b} to explain ${bStrong}. Then pose one question that needs both pieces to answer. Keep your turns under 40 words. Never lecture. End with a 3-bullet summary and the concepts each person should add.`;

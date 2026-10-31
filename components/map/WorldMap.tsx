@@ -50,6 +50,8 @@ export default function WorldMap(props: WorldMapProps) {
     let userMovedAt = 0;
     const reveal = new Map<string, number>(); // animated fog radius per node
     const spawned = new Map<string, number>(); // slug → first-seen time (drop-in animation)
+    const prevKind = new Map<string, string>();
+    const pulses: { x: number; y: number; text: string; life: number }[] = [];
     const particles: Particle[] = [];
     let w = 0, h = 0, dpr = 1;
     let hover: string | null = null;
@@ -173,7 +175,9 @@ export default function WorldMap(props: WorldMapProps) {
       ctx.fillRect(0, 0, cv.width, cv.height);
       ctx.setTransform(dpr * cam.z, 0, 0, dpr * cam.z, dpr * (w / 2 - cam.x * cam.z), dpr * (h / 2 - cam.y * cam.z));
       ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = 0.8; // quiet terrain so blocks and torches carry the signal
       ctx.drawImage(terrain, 0, 0);
+      ctx.globalAlpha = 1;
 
       // Paths (L-shaped tile routes). Rails = prerequisite, roads = part_of, dirt = related.
       for (const e of edges) {
@@ -227,8 +231,9 @@ export default function WorldMap(props: WorldMapProps) {
       for (let y = 0; y <= WORLD_H; y += 8) { ctx.moveTo(0, y * TILE); ctx.lineTo(WORLD_W * TILE, y * TILE); }
       ctx.stroke();
 
-      // Blocks
-      const tags: { x: number; y: number; text: string; sub?: string; sel: boolean; alpha: number }[] = [];
+      // Blocks. Label level-of-detail: seeded blocks stay quiet (just "?")
+      // until selected/hovered, so the map reads at demo-video distance.
+      const tags: { x: number; y: number; text: string; sub?: string; sel: boolean; alpha: number; prio: number }[] = [];
       for (const c of onMap) {
         const n = nodes[c.slug];
         const size = sizeFor(n.mastery) * TILE;
@@ -269,6 +274,15 @@ export default function WorldMap(props: WorldMapProps) {
           ctx.fillRect(x + size + 1.5, y + size - 10, 3, 3);
         }
         ctx.globalAlpha = 1;
+        const prev = prevKind.get(c.slug);
+        if (prev && prev !== kind) {
+          const rank: Record<string, number> = { cobble: 0, iron: 1, gold: 2, diamond: 3 };
+          if ((rank[kind] ?? 0) > (rank[prev] ?? 0)) {
+            burst(x + size / 2, y + size / 2, kind === "diamond" ? ["#4ddfe6", "#fff", "#ffd27a"] : ["#f5c542", "#fff"], 22);
+            pulses.push({ x: x + size / 2, y: y - 6, text: kind === "diamond" ? "TORCH LIT" : `${prev.toUpperCase()} → ${kind.toUpperCase()}`, life: 0 });
+          }
+        }
+        prevKind.set(c.slug, kind);
         const sel = selected === c.slug;
         if (sel || hover === c.slug) {
           // Mission-control corner brackets
@@ -284,7 +298,8 @@ export default function WorldMap(props: WorldMapProps) {
           ctx.moveTo(x0 + L, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y1 - L);
           ctx.stroke();
         }
-        tags.push({ x: x + size / 2, y: y - 4, text: c.title, sub: n.learnedWith ? `w/ ${n.learnedWith}` : undefined, sel, alpha: Math.max(0.45, alpha) });
+        const prio = sel ? 4 : hover === c.slug ? 3 : n.state === "understood" ? 2 : n.state === "explored" ? 1 : -1;
+        if (prio >= 0) tags.push({ x: x + size / 2, y: y - 4, text: c.title, sub: n.learnedWith ? `w/ ${n.learnedWith}` : undefined, sel, alpha: Math.max(0.45, alpha), prio });
       }
 
       // Player heads for present explorers, at the first concept of theirs on the map.
@@ -298,7 +313,7 @@ export default function WorldMap(props: WorldMapProps) {
         const size = sizeFor(nodes[at].mastery) * TILE;
         const hx = c.x! * TILE + size + 4 + i * 11, hy = c.y! * TILE + size - 6 + Math.sin(t / 300 + i) * 1.2;
         drawHead(ctx, hx, hy, 1.1, ex.color);
-        tags.push({ x: hx + 4.4, y: hy + 14, text: `${ex.name}${ex.demo ? " · DEMO" : ""}`, sel: false, alpha: 0.9 });
+        tags.push({ x: hx + 4.4, y: hy + 14, text: `${ex.name}${ex.demo ? " · DEMO" : ""}`, sel: false, alpha: 0.9, prio: 0 });
       }
 
       // Particles
@@ -314,28 +329,38 @@ export default function WorldMap(props: WorldMapProps) {
       }
       ctx.globalAlpha = 1;
 
+      // Upgrade pulses: floating reward labels above the block (world space).
+      ctx.textAlign = "center";
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const p = pulses[i];
+        p.life += dt;
+        if (p.life > 0.9) { pulses.splice(i, 1); continue; }
+        ctx.globalAlpha = 1 - p.life / 0.9;
+        ctx.font = `bold ${Math.max(7, 9 / Math.max(1, cam.z * 0.6))}px ${pixelFont}`;
+        ctx.fillStyle = "#ffd27a";
+        ctx.fillText(p.text, p.x, p.y - p.life * 18);
+      }
+      ctx.globalAlpha = 1;
+
       // Nametags in screen space so text stays crisp at any zoom.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      // Simple label collision: nudge a tag upward until it clears earlier ones. Selected draws last, on top.
+      // Labels: highest priority first, capped, hidden on collision (never stacked).
       const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
-      tags.sort((a, b) => Number(a.sel) - Number(b.sel));
-      for (const g of tags) {
+      tags.sort((a, b) => b.prio - a.prio);
+      for (const g of tags.slice(0, 14)) {
         const sx = w / 2 + (g.x - cam.x) * cam.z;
-        let sy = h / 2 + (g.y - cam.y) * cam.z;
+        const sy = h / 2 + (g.y - cam.y) * cam.z;
         if (sx < -100 || sx > w + 100 || sy < -40 || sy > h + 40) continue;
-        ctx.font = `${g.sel ? 11 : 10}px ${pixelFont}`;
+        ctx.font = `11px ${pixelFont}`;
         const text = g.text.toUpperCase();
         const tw = ctx.measureText(text).width + 10;
-        for (let k = 0; k < 4 && !g.sel; k++) {
-          const r = { x0: sx - tw / 2, x1: sx + tw / 2, y0: sy - 16, y1: sy - 2 };
-          if (!placed.some((p) => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0)) break;
-          sy -= 15;
-        }
-        placed.push({ x0: sx - tw / 2, x1: sx + tw / 2, y0: sy - 16, y1: sy - 2 });
+        const r = { x0: sx - tw / 2, x1: sx + tw / 2, y0: sy - 16, y1: sy - 2 };
+        if (!g.sel && placed.some((p) => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0)) continue;
+        placed.push(r);
         ctx.globalAlpha = g.alpha;
-        ctx.fillStyle = g.sel ? "rgba(242,107,29,.92)" : "rgba(0,0,0,.62)";
+        ctx.fillStyle = g.sel ? "rgba(242,107,29,.92)" : "rgba(0,0,0,.85)";
         ctx.fillRect(Math.round(sx - tw / 2), Math.round(sy - 16), Math.round(tw), 14);
         ctx.fillStyle = g.sel ? "#0a0a0b" : "#f2f0ea";
         ctx.fillText(text, Math.round(sx), Math.round(sy - 8.5));

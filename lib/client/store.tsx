@@ -7,7 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import type { AgentName, Concept, Edge, EventKind, Explorer, FEvent, LogEntry, MatchRequest, Profile, UserNode } from "../types";
 import { replay } from "../math";
 import { placeNear } from "../layout";
-import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
+import { CATALOG, DEMO_PROFILE, seedExplorers } from "../demo/seed";
 import type { SystemStatus } from "../server/config";
 import { hydrateLive, liveConfigured, persistEvent } from "./live";
 
@@ -18,6 +18,7 @@ export interface Mission {
   at: number;
   status: "running" | "done" | "error";
   intent?: string;
+  error?: string;
   added: number;
   reused: number;
 }
@@ -83,16 +84,16 @@ const initial: State = {
 function reducer(s: State, a: Action): State {
   switch (a.t) {
     case "hydrate": {
-      const concepts: Record<string, Concept> = {};
-      for (const slug of START_SLUGS) concepts[slug] = { ...CATALOG[slug] };
+      // Clean slate: a new learner has learned nothing yet. Muse builds the
+      // starting path from their first curiosity — no fake week of history.
       return {
         ...s,
         ready: true,
-        concepts,
-        edges: CATALOG_EDGES,
-        events: seedEvents(a.now),
+        concepts: {},
+        edges: [],
+        events: [],
         explorers: seedExplorers(a.now),
-        log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: "Loaded 7 days of map history (seed data)", level: "info", demo: true }],
+        log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: "Welcome — tell Muse what you're curious about to build your path", level: "info", demo: true }],
       };
     }
     case "hydrateLive": {

@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 export interface TL { on: boolean; t: number; playing: boolean }
 export const TL_MS = 10_000;
 
-export default function TimeLapse({ start, end, tl, setTl }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void }) {
+export default function TimeLapse({ start, end, tl, setTl, caption, counts }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void; caption?: string; counts?: string }) {
   const raf = useRef(0);
   useEffect(() => {
     if (!tl.playing) return;
@@ -38,6 +38,8 @@ export default function TimeLapse({ start, end, tl, setTl }: { start: number; en
       <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-center">
         <div className="pixel text-[34px] leading-none text-white [text-shadow:3px_3px_0_#000]">DAY {day}</div>
         <div className="mt-1 text-[10px] tracking-[0.2em] text-muted [text-shadow:1px_1px_0_#000]">{new Date(tl.t).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }).toUpperCase()}</div>
+        {caption && <div className="mx-auto mt-2 max-w-md border border-line bg-black/70 px-3 py-1.5 font-sans text-[13px] text-text [text-shadow:1px_1px_0_#000]">{caption}</div>}
+        {counts && <div className="mt-1 text-[11px] tabular-nums text-signal [text-shadow:1px_1px_0_#000]">{counts}</div>}
       </div>
       <div className="absolute inset-x-3 bottom-3 flex items-center gap-3 border border-line-2 bg-panel/95 px-3 py-2 backdrop-blur sm:right-16">
         <button className="w-6 text-signal" onClick={() => setTl((p) => ({ ...p, playing: !p.playing, t: p.t >= end ? start : p.t }))} aria-label={tl.playing ? "Pause" : "Play"}>

@@ -13,6 +13,8 @@ export const ExpandRequest = z.object({
   text: z.string().trim().min(2).max(500),
   /** Short summary of the user's map so the model prefers new concepts. */
   mapSummary: z.array(slug).max(200).default([]),
+  /** How this learner learns (lib/learn.ts) — Muse builds future nodes from it. */
+  learnerSummary: z.string().max(600).default(""),
 });
 
 // Raw model output, one JSON object per line. Invalid lines are dropped (plan §9).
@@ -36,6 +38,52 @@ export const ExplainRequest = z.object({
 export const ExplainResult = z.object({
   score: z.number().int().min(0).max(3),
   feedback: z.string().max(240),
+});
+
+export const TeachRequest = z.object({
+  slug,
+  learnerSummary: z.string().max(900).default(""),
+  depth: z.number().int().min(1).max(5).default(1),
+});
+export const TeachResult = z.object({
+  format: z.enum(["predict", "manipulate", "analogy", "story", "source-clip", "short-read"]),
+  title: z.string().min(1).max(80),
+  body: z.string().min(1).max(700),
+  interaction: z
+    .object({
+      prompt: z.string().min(1).max(240),
+      options: z.array(z.object({ label: z.string().min(1).max(80), reveal: z.string().min(1).max(400) })).min(2).max(4),
+    })
+    .optional(),
+  branches: z.array(z.object({ title: z.string().min(1).max(80), why: z.string().min(1).max(160) })).min(2).max(3),
+  challenge: z
+    .object({
+      kind: z.enum(["spot-the-error", "order-steps", "predict-output", "fill-blank"]),
+      prompt: z.string().min(1).max(300),
+      options: z.array(z.string().min(1).max(120)).min(3).max(4),
+      correct: z.number().int().min(0).max(3),
+      explanation: z.string().min(1).max(400),
+    })
+    .optional(),
+  adaptedNote: z.string().max(280),
+});
+
+export const CourseRequest = z.object({
+  slug,
+  learnerSummary: z.string().max(600).default(""),
+});
+export const CourseResult = z.object({
+  lessons: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(80),
+        body: z.string().min(1).max(600),
+        format: z.enum(["hook", "mechanism", "example", "recall"]),
+      }),
+    )
+    .min(3)
+    .max(5),
+  adaptedNote: z.string().max(240),
 });
 
 export const LearningEventRequest = z.object({

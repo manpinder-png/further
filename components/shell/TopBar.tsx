@@ -5,7 +5,7 @@ import { useStore } from "@/lib/client/store";
 import { BlockIcon } from "@/components/ui/bits";
 
 const NAV = [
-  { href: "/", label: "Map" },
+  { href: "/", label: "Learn" },
   { href: "/session", label: "Session" },
   { href: "/profile", label: "Profile" },
   { href: "/connectors", label: "Connectors" },
@@ -26,13 +26,13 @@ const PILLS: { key: string; label: string; title: string }[] = [
 export default function TopBar() {
   const path = usePathname();
   const { status } = useStore();
-  const anyDemo = status && Object.values(status).includes("demo");
+  const anyDemo = status?.muse === "demo";
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-bg px-3 sm:gap-4">
       <Link href="/" className="flex items-center gap-2" aria-label="Further home">
         <BlockIcon kind="diamond" slug="further" size={18} />
         <span className="pixel text-[15px] tracking-wider">FURTHER</span>
-        <span className="hidden text-[10px] tracking-[0.2em] text-dim sm:inline">/// MISSION CONTROL</span>
+        <span className="hidden text-[10px] tracking-[0.2em] text-dim sm:inline">LEARN AI, STEP BY STEP</span>
       </Link>
       <nav className="flex h-full items-stretch sm:ml-2" aria-label="Main">
         {NAV.map((n) => {

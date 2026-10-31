@@ -204,6 +204,6 @@ export function drawHead(ctx: CanvasRenderingContext2D, x: number, y: number, s:
 
 export function blockKindFor(state: string, mastery: number): BlockKind {
   if (state === "understood") return "diamond";
-  if (state === "explored") return mastery >= 0.3 ? "gold" : "iron";
+  if (state === "explored") return mastery >= 0.2 ? "gold" : "iron";
   return "cobble";
 }

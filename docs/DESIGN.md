@@ -145,6 +145,14 @@ What changed after looking at real screenshots of the running app (headless Chro
 9. **Hydration mismatches** on Connectors (`window.location` in render) and the Ops countdown (`Date.now()` in render). Both moved to after mount.
 10. **Mobile top bar overflowed.** Shortened "Demo mode" to "Demo" under `sm`, tightened gaps, and allowed the map to fit at a lower zoom.
 
+## MD-conformance pass (Oct 31)
+
+- Canonicalization now runs against the global concept graph in `/api/expand`, not only the caller's map (§5.1), and the alias-before-plural-stripping bug is fixed with regression tests in `tests/`.
+- Map reward legibility: seeded labels stay hidden until hover/select, labels are priority-capped and hidden on collision, terrain is quieted, gold arrives at mastery ≥0.2, and block upgrades fire a burst + floating `IRON → GOLD` / `TORCH LIT` pulse.
+- Time-lapse carries a story caption and live counters (`N concepts · M understood`); the inspector freezes during replay; interest decay ticks every 30s.
+- Return hooks (on-plan, no streaks/points): "Fog is creeping back" resume card in the inspector and a `Continue: {frontier}` chip in the command bar.
+- AI-domain backbone grew by 8 concepts (tokens, context window, LLMs, fine-tuning, RAG, inference, distillation, datasets) with edges; tensor-cores seed link corrected; 4 more labeled seed explorers.
+
 ## 7. Known gaps (UI side)
 
 - The canvas map has no keyboard focus model. The Recent list is the accessible path; a full list view would be better.
