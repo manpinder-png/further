@@ -38,6 +38,22 @@ export const ExplainResult = z.object({
   feedback: z.string().max(240),
 });
 
+export const LearningEventRequest = z.object({
+  slug,
+  kind: z.enum(["seed", "open", "dwell", "skip", "watch", "explain", "session"]),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const PersistConceptRequest = z.object({
+  concept: z.object({
+    slug,
+    title: z.string().trim().min(1).max(80),
+    hook: z.string().trim().min(1).max(240),
+    domain: z.literal("ai-tech").default("ai-tech"),
+  }),
+  edge: z.object({ from: slug, kind: edgeKind }).optional(),
+});
+
 export const ModerateRequest = z.object({
   sessionId: z.string().min(1).max(64),
   from: z.string().min(1).max(64),
@@ -49,6 +65,27 @@ export const VerifyRequest = z.object({ url: z.string().url().max(500) });
 export const MatchDecision = z.object({
   requestId: z.string().min(1).max(64),
   decision: z.enum(["accept", "decline"]),
+});
+
+export const PresenceSnapshot = z.object({
+  activeConcepts: z.array(slug).max(5),
+  mastery: z.record(slug, z.number().min(0).max(1)),
+  openToMatch: z.boolean(),
+  language: z.string().min(2).max(8),
+});
+
+export const FinishSessionRequest = z.object({
+  concepts: z.array(slug).min(1).max(8),
+  summary: z.array(z.string().max(240)).max(5).default([]),
+});
+
+export const ProfileUpdateRequest = z.object({
+  displayName: z.string().trim().min(1).max(40),
+  staticProfile: z.object({ role: z.string().max(120), background: z.string().max(1_000), age18Plus: z.boolean() }),
+  preferences: z.object({ style: z.string().max(120), pace: z.string().max(120), inferred: z.boolean() }),
+  currentIntent: z.string().max(500),
+  openToMatch: z.boolean(),
+  language: z.string().min(2).max(8),
 });
 
 export const McpCall = z.object({

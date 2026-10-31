@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/client/store";
 import { CATALOG, seedExplorers } from "@/lib/demo/seed";
 import { Demo, Head, NodeIcon } from "@/components/ui/bits";
+import { liveConfigured, liveFetch } from "@/lib/client/live";
 
 type Msg = {
   id: number;
@@ -64,26 +65,31 @@ function Session() {
         </div>
       </div>
     );
-  return <Room peerId={match?.peer.id ?? "amit"} you={profile.displayName} youStrong={match?.youStrong ?? "matrix-multiplication"} peerStrong={match?.peerStrong ?? "memory-bandwidth"} shared={match?.concept ?? "ai-accelerators"} />;
+  return <Room peerId={match?.peer.id ?? "amit"} you={profile.displayName} youStrong={match?.youStrong ?? "matrix-multiplication"} peerStrong={match?.peerStrong ?? "memory-bandwidth"} shared={match?.concept ?? "ai-accelerators"} sessionId={params.get("s") ?? match?.sessionId} />;
 }
 
-function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; you: string; youStrong: string; peerStrong: string; shared: string }) {
-  const { say, track, dispatch, nodes } = useStore();
+function Room({ peerId, you, youStrong, peerStrong, shared, sessionId }: { peerId: string; you: string; youStrong: string; peerStrong: string; shared: string; sessionId?: string }) {
+  const { say, track, dispatch, nodes, match } = useStore();
   const router = useRouter();
-  const peer = useMemo(() => seedExplorers(Date.now()).find((e) => e.id === peerId)!, [peerId]);
+  const peer = useMemo(() => match?.peer.id === peerId ? match.peer : seedExplorers(Date.now()).find((e) => e.id === peerId) ?? {
+    id: peerId, name: "Explorer", demo: false, color: "#4ddfe6", activeConcepts: [], mastery: {}, openToMatch: true, language: "en", lastActive: Date.now(),
+  }, [match, peerId]);
   const T = (s: string) => CATALOG[s]?.title ?? s;
   const ctx = { a: you, aStrong: T(youStrong), b: peer.name, bStrong: T(peerStrong), shared: T(shared) };
+  const live = Boolean(sessionId && liveConfigured() && !peer.demo);
   const id = useRef(1);
   const turn = useRef(0);
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { id: 0, who: "system", text: `Session started · jigsaw · 10 min · both accepted` },
-    {
-      id: 1,
-      who: "facilitator",
-      demo: true,
-      text: `Hi ${you} and ${peer.name}. You're both exploring ${ctx.shared}. ${you} knows ${ctx.aStrong}; ${peer.name} knows ${ctx.bStrong}. ${you}, explain ${ctx.aStrong.toLowerCase()} in two sentences.`,
-    },
-  ]);
+  const [msgs, setMsgs] = useState<Msg[]>(() => live
+    ? [{ id: 0, who: "system", text: "Session started · jigsaw · 10 min · both accepted. Start by explaining your piece in two sentences." }]
+    : [
+      { id: 0, who: "system", text: "Session started · jigsaw · 10 min · both accepted" },
+      {
+        id: 1,
+        who: "facilitator",
+        demo: true,
+        text: `Hi ${you} and ${peer.name}. You're both exploring ${ctx.shared}. ${you} knows ${ctx.aStrong}; ${peer.name} knows ${ctx.bStrong}. ${you}, explain ${ctx.aStrong.toLowerCase()} in two sentences.`,
+      },
+    ]);
   const [phase, setPhase] = useState(0);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -101,17 +107,42 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
     return () => clearInterval(iv);
   }, [ended]);
 
+  // The real room reads its durable transcript. Polling is intentionally a
+  // small transport seam: replace this effect with Supabase Broadcast when the
+  // realtime client is added, without changing message storage or rendering.
+  useEffect(() => {
+    if (!live || !sessionId) return;
+    let alive = true;
+    const sync = async () => {
+      try {
+        const r = await liveFetch(`/api/session/${sessionId}/message`);
+        const d = await r.json();
+        if (!alive || !r.ok || !Array.isArray(d.messages)) return;
+        setMsgs((previous) => {
+          const system = previous.filter((m) => m.who === "system");
+          const remote = d.messages as Msg[];
+          return [...system, ...remote];
+        });
+      } catch { /* preserve the local composer while a network retry happens */ }
+    };
+    void sync();
+    const interval = setInterval(sync, 1800);
+    return () => { alive = false; clearInterval(interval); };
+  }, [live, sessionId]);
+
   const push = (m: Omit<Msg, "id">) => setMsgs((p) => [...p, { ...m, id: ++id.current }]);
   const history = () => msgs.filter((m) => m.who !== "system").map((m) => ({ role: m.who === "facilitator" ? ("assistant" as const) : ("user" as const), content: m.text.slice(0, 1000) }));
 
   const send = async (who: "me" | "peer", body: string) => {
     setSending(true);
     say("GUARD", `Llama Guard ← ${who === "me" ? you : peer.name}: "${body.slice(0, 40)}…"`);
-    const r = await fetch(`/api/session/demo/message`, {
+    const request = {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: JSON.stringify({ from: who, text: body, turn: turn.current, ctx, history: history() }),
-    });
+    };
+    const r = live && sessionId
+      ? await liveFetch(`/api/session/${sessionId}/message`, request)
+      : await fetch("/api/session/demo/message", { ...request, headers: { "content-type": "application/json" } });
     const d = await r.json();
     setSending(false);
     if (!r.ok) { push({ who: "system", text: d.error ?? "Message held." }); return; }
@@ -120,22 +151,31 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
       push({ who: "system", text: `Message held by Llama Guard (${d.verdict.category}). It wasn't delivered.` });
       return;
     }
-    push({ who, text: body, guard: d.verdict, demo: who === "peer" });
+    if (!live) push({ who, text: body, guard: d.verdict, demo: who === "peer" });
     turn.current++;
     setPhase(Math.min(3, turn.current));
-    if (d.facilitator) {
+    if (d.facilitator && !live) {
       say("FACILITATE", `turn ${turn.current}: ${d.facilitator.split(/\s+/).length} words (≤ 40)`, "ok", d.demo);
       await new Promise((r) => setTimeout(r, 400));
       push({ who: "facilitator", text: d.facilitator, demo: d.demo });
     }
     if (d.done) { setDone(true); return; }
     // DEMO: seed peer replies on its turns. Live: arrives over Supabase Broadcast.
-    if (who === "me" && (turn.current === 1 || turn.current === 3) && !blocked) {
+    if (!live && who === "me" && (turn.current === 1 || turn.current === 3) && !blocked) {
       setTimeout(() => send("peer", PEER_LINES[turn.current === 1 ? 0 : 1]), 1600);
     }
   };
 
-  const end = () => {
+  const end = async () => {
+    if (live && sessionId) {
+      try {
+        const r = await liveFetch(`/api/session/${sessionId}/end`, { method: "POST", body: JSON.stringify({ concepts: [youStrong, peerStrong], summary: ["Jigsaw session completed"] }) });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error ?? "Couldn't update maps"); }
+      } catch (err) {
+        say("FACILITATE", err instanceof Error ? err.message : "Couldn't update maps", "err");
+        return;
+      }
+    }
     setEnded(true);
     track(youStrong, "session", { with: peer.name });
     track(peerStrong, "session", { with: peer.name });

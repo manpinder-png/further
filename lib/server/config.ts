@@ -6,9 +6,10 @@ export const env = {
   metaUrl: process.env.META_API_URL ?? "https://api.meta.ai/v1",
   metaModel: process.env.META_MODEL ?? "muse-spark-1.3",
   metaDevModel: process.env.META_DEV_MODEL ?? "muse-spark-1.3-contributor",
-  transcribeModel: process.env.META_TRANSCRIBE_MODEL ?? "muse-voice-transcribe",
+  transcribeModel: process.env.META_TRANSCRIBE_MODEL ?? "muse-voice-transcribe-1.0",
   imageModel: process.env.META_IMAGE_MODEL ?? "muse-image",
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+  supabaseAnon: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
   supabaseService: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   guardUrl: process.env.LLAMA_GUARD_URL ?? "",
   guardKey: process.env.LLAMA_GUARD_API_KEY ?? "",
@@ -22,15 +23,19 @@ export type Mode = "live" | "demo" | "down";
 /** What the status pills in the top bar show. */
 export function systemStatus() {
   const m = (on: boolean): Mode => (on ? "live" : "demo");
+  const databaseReady = !!env.supabaseUrl && !!env.supabaseAnon && !!env.supabaseService;
   return {
     muse: m(!!env.metaKey),
     transcribe: m(!!env.metaKey),
+    // Grounding is live only when its Responses route can execute. Image and
+    // Presence remain demo until their implementations exist; a key alone is
+    // not evidence that the product is using that system.
     grounding: m(!!env.metaKey),
-    image: m(!!env.metaKey),
-    supabase: m(!!env.supabaseUrl && !!env.supabaseService),
-    presence: m(!!env.supabaseUrl),
+    image: "demo" as Mode,
+    supabase: m(databaseReady),
+    presence: "demo" as Mode,
     guard: m(!!env.guardUrl && !!env.guardKey),
-    mcp: "live" as Mode, // the route always runs; auth is a per-user token
+    mcp: "demo" as Mode,
     sentry: m(!!env.sentryDsn),
     model: env.metaModel,
   };

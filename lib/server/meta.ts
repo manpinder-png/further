@@ -29,8 +29,68 @@ export async function chat(messages: Msg[], opts: { json?: boolean; maxTokens?: 
   return String(data.choices?.[0]?.message?.content ?? "");
 }
 
+export interface GroundedCitation {
+  url: string;
+  title: string;
+  start: number;
+  end: number;
+}
+
+export interface GroundedAnswer {
+  text: string;
+  citations: GroundedCitation[];
+  searched: boolean;
+}
+
+/**
+ * Web search grounding is a Responses API capability, not a Chat Completions
+ * capability.  We deliberately return the citation spans rather than trusting
+ * an answer merely because search was enabled: the model is allowed to answer
+ * without searching, in which case the card must not be presented as sourced.
+ */
+export async function groundedAnswer(input: string, opts: { maxTokens?: number } = {}): Promise<GroundedAnswer> {
+  const res = await fetch(`${env.metaUrl}/responses`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.metaKey}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.metaModel,
+      input,
+      tools: [{ type: "web_search", search_context_size: "medium" }],
+      include: ["web_search_call.results"],
+      max_output_tokens: opts.maxTokens ?? 500,
+    }),
+    signal: AbortSignal.timeout(25_000),
+  });
+  if (!res.ok) throw new Error(`Meta Responses API ${res.status}`);
+  const data = await res.json() as {
+    output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string; annotations?: Array<{ type?: string; url?: string; title?: string; start_index?: number; end_index?: number }> }> }>;
+    output_text?: string;
+  };
+  const citations: GroundedCitation[] = [];
+  let text = "";
+  let searched = false;
+  for (const item of data.output ?? []) {
+    if (item.type === "web_search_call") searched = true;
+    if (item.type !== "message") continue;
+    for (const block of item.content ?? []) {
+      if (block.type !== "output_text") continue;
+      text += block.text ?? "";
+      for (const annotation of block.annotations ?? []) {
+        if (annotation.type !== "url_citation" || !annotation.url) continue;
+        citations.push({
+          url: annotation.url,
+          title: annotation.title ?? new URL(annotation.url).hostname,
+          start: annotation.start_index ?? 0,
+          end: annotation.end_index ?? 0,
+        });
+      }
+    }
+  }
+  return { text: text || String(data.output_text ?? ""), citations, searched };
+}
+
 /** Streams text deltas from Muse Spark (`stream: true`), yielding complete lines. */
-export async function* streamLines(messages: Msg[], opts: { webSearch?: boolean } = {}) {
+export async function* streamLines(messages: Msg[]) {
   const res = await fetch(`${env.metaUrl}/chat/completions`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.metaKey}`, "content-type": "application/json" },
@@ -39,8 +99,6 @@ export async function* streamLines(messages: Msg[], opts: { webSearch?: boolean 
       messages,
       stream: true,
       max_tokens: 1200,
-      // TODO(Connor): confirm the web-search grounding parameter name in Meta docs.
-      ...(opts.webSearch ? { tools: [{ type: "web_search" }] } : {}),
     }),
     signal: AbortSignal.timeout(30_000),
   });
@@ -79,16 +137,26 @@ export async function* streamLines(messages: Msg[], opts: { webSearch?: boolean 
 /** Muse Voice Transcribe. Audio comes from the browser's MediaRecorder. */
 export async function transcribe(audio: Blob) {
   const form = new FormData();
-  form.append("file", audio, "clip.webm");
-  form.append("model", env.transcribeModel);
-  const res = await fetch(`${env.metaUrl}/audio/transcriptions`, {
+  // Voice Transcribe has its own ASR endpoint rather than the OpenAI audio
+  // compatibility route. The request envelope also leaves room for language
+  // and vocabulary biasing as the app grows beyond the AI-tech demo domain.
+  form.append("request", new Blob([JSON.stringify({
+    model: env.transcribeModel,
+    mode: "PUSH_TO_TALK",
+    audioEncoding: "WAV",
+    languageBias: ["English"],
+    keywords: ["CUDA", "GPU", "HBM", "tensor core", "matrix multiplication"],
+  })], { type: "application/json" }));
+  form.append("audio", audio, "clip.wav");
+  const res = await fetch(`${env.metaUrl}/asr/transcribe`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.metaKey}` },
     body: form,
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Transcribe ${res.status}`);
-  return String((await res.json()).text ?? "");
+  const data = await res.json() as { transcript?: string; text?: string };
+  return String(data.transcript ?? data.text ?? "");
 }
 
 export const EXPAND_SYSTEM = `You map curiosity into concepts. The user may not know the right words. Infer their intent. Return 5–7 concepts as JSON Lines: first an intent line {"intent","root","rootTitle"}, then one line per concept {"slug","title","hook","edge":{"from","kind"},"difficulty"}. kind is prerequisite|related|part_of. Order them from most approachable to most advanced. Prefer concepts the user's existing map doesn't already cover. Hooks are one sentence and make the user want to tap. No markdown.`;

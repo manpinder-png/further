@@ -6,8 +6,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import type { AgentName, Concept, Edge, EventKind, Explorer, FEvent, LogEntry, MatchRequest, Profile, UserNode } from "../types";
 import { replay } from "../math";
+import { placeNear } from "../layout";
 import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
 import type { SystemStatus } from "../server/config";
+import { hydrateLive, liveConfigured, persistEvent } from "./live";
 
 export interface Mission {
   id: number;
@@ -45,6 +47,7 @@ interface State {
 
 type Action =
   | { t: "hydrate"; now: number }
+  | { t: "hydrateLive"; snapshot: { concepts: Concept[]; edges: Edge[]; events: FEvent[]; profile?: Profile | null } }
   | { t: "concept"; c: Concept; edge?: Edge }
   | { t: "edge"; e: Edge }
   | { t: "event"; slug: string; kind: EventKind; payload?: Record<string, unknown> }
@@ -90,6 +93,35 @@ function reducer(s: State, a: Action): State {
         events: seedEvents(a.now),
         explorers: seedExplorers(a.now),
         log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: "Loaded 7 days of map history (seed data)", level: "info", demo: true }],
+      };
+    }
+    case "hydrateLive": {
+      // Tile coordinates are presentation-only, so keep them client-side and
+      // deterministically rebuild them from the persisted graph after reload.
+      const placed: Concept[] = [];
+      const remaining = [...a.snapshot.concepts];
+      let deferred = 0;
+      while (remaining.length) {
+        const next = remaining.shift()!;
+        const parentSlug = a.snapshot.edges.find((e) => e.dst === next.slug)?.src;
+        const parent = placed.find((c) => c.slug === parentSlug);
+        if (parentSlug && !parent && remaining.some((c) => c.slug === parentSlug) && deferred < remaining.length) {
+          remaining.push(next);
+          deferred++;
+          continue;
+        }
+        placed.push({ ...next, ...placeNear(next.slug, parent?.x !== undefined ? { x: parent.x, y: parent.y! } : undefined, placed) });
+        deferred = 0;
+      }
+      return {
+        ...s,
+        ready: true,
+        concepts: Object.fromEntries(placed.map((c) => [c.slug, c])),
+        edges: a.snapshot.edges,
+        events: a.snapshot.events,
+        explorers: [],
+        profile: a.snapshot.profile ?? s.profile,
+        log: [{ id: logId++, at: Date.now(), agent: "SYSTEM", msg: "Loaded your persisted learning map", level: "ok" }],
       };
     }
     case "concept":
@@ -140,7 +172,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (boot.current) return;
     boot.current = true;
-    dispatch({ t: "hydrate", now: Date.now() });
+    const bootNow = Date.now();
+    // A real user/session takes precedence over fixtures. The fallback retains
+    // Siri's rehearsable demo when Supabase anonymous auth is not enabled.
+    if (liveConfigured()) {
+      hydrateLive()
+        .then((snapshot) => dispatch({ t: "hydrateLive", snapshot }))
+        .catch(() => dispatch({ t: "hydrate", now: bootNow }));
+    } else {
+      dispatch({ t: "hydrate", now: bootNow });
+    }
     fetch("/api/health")
       .then((r) => r.json())
       .then((s: SystemStatus) => {
@@ -153,7 +194,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const nodes = useMemo(() => replay(state.events), [state.events]);
   const say = useCallback<Ctx["say"]>((agent, msg, level = "info", demo) => dispatch({ t: "log", e: { agent, msg, level, demo } }), []);
-  const track = useCallback<Ctx["track"]>((slug, kind, payload) => dispatch({ t: "event", slug, kind, payload }), []);
+  const track = useCallback<Ctx["track"]>((slug, kind, payload) => {
+    dispatch({ t: "event", slug, kind, payload });
+    // Optimistic local state keeps the map responsive; Postgres records the
+    // same event atomically when a live anonymous/authenticated session exists.
+    if (liveConfigured()) persistEvent(slug, kind, payload).catch(() => undefined);
+  }, []);
 
   const value = useMemo(() => ({ ...state, nodes, dispatch, say, track }), [state, nodes, say, track]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

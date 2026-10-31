@@ -5,12 +5,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/client/store";
 import { Demo, NodeIcon } from "@/components/ui/bits";
+import { liveConfigured, persistProfile } from "@/lib/client/live";
 
 export default function ProfilePage() {
   const { profile, dispatch, nodes, sessions, missions } = useStore();
   const [copied, setCopied] = useState(false);
   const list = Object.values(nodes);
-  const set = (p: Partial<typeof profile>) => dispatch({ t: "profile", p });
+  const set = (p: Partial<typeof profile>) => {
+    const next = { ...profile, ...p };
+    dispatch({ t: "profile", p });
+    if (liveConfigured()) void persistProfile(next).catch(() => undefined);
+  };
 
   return (
     <div className="scroll grid-bg h-full">

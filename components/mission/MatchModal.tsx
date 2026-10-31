@@ -7,6 +7,7 @@ import { useStore } from "@/lib/client/store";
 import { CATALOG } from "@/lib/demo/seed";
 import { HANDSHAKE_MS } from "@/lib/matching";
 import { Demo, Head } from "@/components/ui/bits";
+import { liveConfigured, liveFetch } from "@/lib/client/live";
 
 export default function MatchModal() {
   const { match, dispatch, say, profile } = useStore();
@@ -26,15 +27,52 @@ export default function MatchModal() {
     return () => clearInterval(iv);
   }, [match, dispatch, say]);
 
+  // The production path polls the durable request while we retain the exact
+  // same MatchRequest contract for a future Supabase Broadcast subscription.
+  useEffect(() => {
+    if (!match || match.peer.demo || match.status !== "waiting" || !liveConfigured()) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const r = await liveFetch(`/api/match?requestId=${encodeURIComponent(match.id)}`);
+        const d = await r.json();
+        if (!alive || !r.ok) return;
+        if (d.status === "accepted") {
+          say("MATCH", `${match.peer.name} accepted · both in → session`, "ok");
+          dispatch({ t: "match", m: { ...match, status: "accepted", sessionId: d.sessionId ?? undefined } });
+          router.push(`/session?m=${match.id}${d.sessionId ? `&s=${d.sessionId}` : ""}`);
+        } else if (d.status === "declined" || d.status === "expired") {
+          say("MATCH", `request to ${match.peer.name} ${d.status}`, "warn");
+          dispatch({ t: "match", m: null });
+        }
+      } catch { /* status will retry; UI keeps its countdown */ }
+    };
+    void check();
+    const iv = setInterval(check, 2000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [match, dispatch, router, say]);
+
   if (!match || match.status === "accepted") return null;
   const title = (s: string) => CATALOG[s]?.title ?? s;
   const frac = Math.max(0, left / HANDSHAKE_MS);
   const R = 26, C = 2 * Math.PI * R;
 
   const accept = async () => {
-    await fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "accept" }) });
+    const live = liveConfigured() && !match.peer.demo;
+    const r = live
+      ? await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ requestId: match.id, decision: "accept" }) })
+      : await fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "accept" }) });
+    const result = await r.json().catch(() => ({}));
+    if (!r.ok) { say("MATCH", result.error ?? "Couldn't accept match", "err"); return; }
     dispatch({ t: "match", m: { ...match, status: "waiting" } });
     say("MATCH", `you accepted · waiting for ${match.peer.name}`);
+    if (live && result.status === "accepted") {
+      say("MATCH", `${match.peer.name} accepted · both in → session`, "ok");
+      dispatch({ t: "match", m: { ...match, status: "accepted", sessionId: result.session_id } });
+      router.push(`/session?m=${match.id}${result.session_id ? `&s=${result.session_id}` : ""}`);
+      return;
+    }
+    if (live) return;
     // DEMO: the seed peer accepts after a beat. Live: Supabase update on match_requests.
     setTimeout(() => {
       say("MATCH", `${match.peer.name} accepted · both in → session`, "ok", match.peer.demo);
@@ -43,7 +81,10 @@ export default function MatchModal() {
     }, 1800);
   };
   const decline = () => {
-    fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "decline" }) });
+    const send = liveConfigured() && !match.peer.demo
+      ? liveFetch("/api/match", { method: "POST", body: JSON.stringify({ requestId: match.id, decision: "decline" }) })
+      : fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "decline" }) });
+    void send.catch(() => undefined);
     say("MATCH", `declined ${match.peer.name} · won't re-match for 24h`, "warn");
     dispatch({ t: "match", m: null });
   };

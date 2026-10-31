@@ -1,7 +1,8 @@
 // Where every plan requirement lives (DESIGN §5). Rendered on /ops.
 // Update `status` as backend work lands: "ui" = UI + demo path done, "stub" = typed
-// hook exists but not wired, "live" = real backend, "todo" = not started.
-export type Status = "live" | "ui" | "stub" | "todo";
+// hook exists but not wired, "wired" = real implementation awaiting project
+// credentials/migration, "live" = verified against the configured service.
+export type Status = "live" | "wired" | "ui" | "stub" | "todo";
 
 export interface Req {
   id: string;
@@ -13,25 +14,25 @@ export interface Req {
 }
 
 export const FUNCTIONAL: Req[] = [
-  { id: "F1", name: "Voice + text curiosity input", owner: "Sirpreet / Connor", ui: "CommandBar (mic, text, examples)", hook: "POST /api/transcribe → lib/server/meta.transcribe", status: "ui" },
-  { id: "F2", name: "Streaming expansion + canonicalization", owner: "Connor", ui: "Map bloom, Missions, Agent log", hook: "POST /api/expand (SSE) · lib/canonicalize.ts → pgvector", status: "ui" },
-  { id: "F3", name: "Node card, validated cited source, Mermaid", owner: "Connor / Manpinder", ui: "Inspector: hook [1], Source, Flowchart", hook: "GET /api/card/:slug · POST /api/resources/verify (oEmbed live)", status: "ui" },
-  { id: "F4", name: "Explain-back with rubric grading", owner: "Connor", ui: "Inspector → Explain it back", hook: "POST /api/explain (GRADE_SYSTEM prompt)", status: "ui" },
+  { id: "F1", name: "Voice + text curiosity input", owner: "Sirpreet / Connor", ui: "CommandBar (mic, text, examples)", hook: "POST /api/transcribe → Meta ASR /asr/transcribe", status: "wired" },
+  { id: "F2", name: "Streaming expansion + canonicalization", owner: "Connor", ui: "Map bloom, Missions, Agent log", hook: "POST /api/expand (SSE) · concepts/events persistence", status: "wired" },
+  { id: "F3", name: "Node card, validated cited source, Mermaid", owner: "Connor / Manpinder", ui: "Inspector: hook [1], Source, Flowchart", hook: "GET /api/card → Meta Responses web search + URL citations", status: "wired" },
+  { id: "F4", name: "Explain-back with rubric grading", owner: "Connor", ui: "Inspector → Explain it back", hook: "POST /api/explain (GRADE_SYSTEM prompt)", status: "wired" },
   { id: "F5", name: "Interest/mastery with decay, bloom/fade", owner: "Sirpreet", ui: "WorldMap blocks, fog, XP bar, pips", hook: "lib/math.ts (shared with server)", status: "live" },
   { id: "F6", name: "Time-lapse from event log", owner: "Sirpreet", ui: "Map → Your brain this week", hook: "lib/math.replay(events) · events table", status: "live" },
-  { id: "F7", name: "Presence matching, reason, handshake, 60s", owner: "Amit", ui: "Explorers panel, MatchModal", hook: "POST /api/match · lib/matching.ts · Presence channel `explorers`", status: "ui" },
-  { id: "F8", name: "Jigsaw session + post-session updates", owner: "Amit / Connor", ui: "/session room, phases, summary", hook: "POST /api/session/:id/message · Broadcast session:{id}", status: "ui" },
-  { id: "F9", name: "Three-layer profile", owner: "Sirpreet", ui: "/profile", hook: "profiles table (static_profile, preferences, current_intent)", status: "ui" },
+  { id: "F7", name: "Presence matching, reason, handshake, 60s", owner: "Amit", ui: "Explorers panel, MatchModal", hook: "POST /api/match · atomic RPC · durable polling", status: "wired" },
+  { id: "F8", name: "Jigsaw session + post-session updates", owner: "Amit / Connor", ui: "/session room, phases, summary", hook: "guarded session_messages · atomic finish RPC", status: "wired" },
+  { id: "F9", name: "Three-layer profile", owner: "Sirpreet", ui: "/profile", hook: "authenticated PATCH → profiles (static_profile, preferences, current_intent)", status: "wired" },
   { id: "F10", name: "MCP server, 4 tools, per-user tokens", owner: "Connor", ui: "/connectors console, Profile token", hook: "POST /api/mcp · lib/mcp-tools.ts · mcp_tokens table", status: "ui" },
 ];
 
 export const NONFUNCTIONAL: Req[] = [
   { id: "N1", name: "First node < 2.5s · cached card < 500ms · match < 30s", owner: "Connor", ui: "Timings printed in Agent log", hook: "measured client-side per run", status: "ui" },
   { id: "N2", name: "Mobile-first, works on demo phones", owner: "Sirpreet", ui: "Bottom sheets, pinned command bar", hook: "—", status: "ui" },
-  { id: "N3", name: "RLS, rate limits, Zod, server-only secrets, non-contributor model", owner: "Connor", ui: "Ops → Production trust", hook: "supabase/migrations · lib/server/ratelimit · lib/schemas", status: "stub" },
-  { id: "N4", name: "Llama Guard on all peer messages, block/report, 18+", owner: "Amit", ui: "Session ✓ GUARD chips, Block, Report, Profile 18+", hook: "lib/server/moderation.ts", status: "stub" },
+  { id: "N3", name: "RLS, rate limits, Zod, server-only secrets, non-contributor model", owner: "Connor", ui: "Ops → Production trust", hook: "RLS migrations · authenticated server routes · lib/schemas", status: "wired" },
+  { id: "N4", name: "Llama Guard on all peer messages, block/report, 18+", owner: "Amit", ui: "Session ✓ GUARD chips, Block, Report, Profile 18+", hook: "lib/server/moderation.ts", status: "wired" },
   { id: "N5", name: "Tech/AI domain only; schema has `domain`", owner: "Manpinder", ui: "World · ai-tech label", hook: "concepts.domain", status: "live" },
-  { id: "N6", name: "Shared, cached concepts and resources", owner: "Connor", ui: "Card shows “cached per concept”", hook: "resources table keyed by concept", status: "stub" },
+  { id: "N6", name: "Shared, cached concepts and resources", owner: "Connor", ui: "Card shows “cached per concept”", hook: "global concepts/aliases; card-cache migration", status: "wired" },
 ];
 
 export const META_MODELS = [
@@ -46,7 +47,7 @@ export const META_MODELS = [
 ];
 
 export const TRUST = [
-  { check: "RLS on every user table", where: "supabase/migrations/0001_init.sql", status: "stub" as Status },
+  { check: "RLS on every user table", where: "supabase/migrations/0001_init.sql + 0002", status: "wired" as Status },
   { check: "Per-user LLM rate limit · 30 expansions/hour", where: "lib/server/ratelimit.ts (in-memory → Postgres)", status: "stub" as Status },
   { check: "All inputs validated with Zod", where: "lib/schemas.ts + every route", status: "live" as Status },
   { check: "Errors to Sentry", where: "lib/server/observability.ts", status: "stub" as Status },

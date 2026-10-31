@@ -22,6 +22,12 @@ npm run typecheck
 npm run build
 ```
 
+### Live two-phone path
+
+Apply `supabase/migrations/0001_init.sql` and `0002_live_learning_loop.sql` to a new Supabase project, then enable **Anonymous Sign-Ins** in Supabase Auth. Set the URL, anon key, and service-role key in `.env.local`; the service-role key stays server-only. The browser receives an anonymous authenticated session, while API routes verify that session before performing shared-graph writes.
+
+Set `META_API_KEY` to turn on Muse Spark, search-grounded cards, explain-back grading, and Voice Transcribe. The card route uses Meta's Responses API for web search and only presents a live card when returned URL-citation annotations exist. A provider failure or an ungrounded response falls back to an explicitly marked demo card.
+
 ## The demo (3 minutes)
 
 | # | Beat | Where |
@@ -55,7 +61,8 @@ app/
     resources/verify/      F3  oEmbed / HTTP source check (live, host-allowlisted)
     explain/               F4  rubric grading
     match/                 F7  scoring + handshake decisions
-    session/[id]/message/  F8  Llama Guard → broadcast → facilitator
+    data/                  authenticated graph hydration, concepts, events
+    session/[id]/          F8 guarded persistent room + atomic completion
     mcp/                   F10 JSON-RPC MCP server
     inbox/                 demo stand-in for Supabase Realtime
     health/                status pills
@@ -69,8 +76,8 @@ lib/
   canonicalize.ts          cosine + threshold, demo embedding
   schemas.ts               Zod for every API boundary
   requirements.ts          the table rendered on /ops
-  client/                  store (event log is the source of truth) + hooks
-  server/                  config, Meta client, moderation, rate limit, observability
+  client/                  store, anonymous live auth, hooks
+  server/                  config, Meta client, Supabase boundary, moderation, rate limit
   demo/seed.ts             all demo data, in one place
 supabase/migrations/       schema + RLS (plan §5.1)
 docs/DESIGN.md             design process, decisions, requirement map, iteration log
@@ -80,7 +87,7 @@ docs/DESIGN.md             design process, decisions, requirement map, iteration
 
 Each system has a typed seam. Fill in the live branch; the UI doesn't change.
 
-- **Connor:** `lib/server/meta.ts` (Muse Spark, transcribe), `app/api/expand` (swap demo embedding for pgvector), `app/api/card` (grounding), `app/api/mcp` (move to the official TS SDK), RLS/rate limit/Sentry.
+- **Connor:** `lib/server/meta.ts` (Muse Spark, Responses grounding, transcribe), `app/api/data` (authenticated graph persistence), `app/api/card` (grounding), `app/api/mcp` (move to the official TS SDK), RLS/rate limit/Sentry.
 - **Amit:** Presence channel `explorers` + 15s scoring job using `lib/matching.ts`, `match_requests` handshake, Broadcast `session:{id}`, `lib/server/moderation.ts` (Llama Guard).
 - **Manpinder:** `lib/demo/seed.ts` (seed concepts, explorers, sources), eval set for the 0.88 canonicalization threshold.
 - **Sirpreet:** everything in `components/`, `docs/DESIGN.md`.

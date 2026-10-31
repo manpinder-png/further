@@ -99,6 +99,9 @@ A running record of how the `ui` branch UI was designed and why. Newest decision
 | D18 | Session route is `/session`, not `/session/[id]` | One active session per user in the MVP; keeps nav simple. API stays `/api/session/:id/message` | Add `[id]` when multiple concurrent sessions exist |
 | D19 | Camera holds still during time-lapse | Auto-fit zoomed into the 3 nodes of day 1 and the "world growing" moment was lost | User can still pan manually |
 | D20 | Inspector "Recent" list is clickable | The canvas isn't keyboard-navigable; this gives keyboard and screen-reader users a path to every card | — |
+| D21 | Live state uses anonymous Supabase Auth plus server-verified API routes | A learner can try Further immediately, yet all persisted writes have a real `auth.uid()` and RLS boundary | Anonymous sign-in must be enabled in the Supabase project; otherwise the app deliberately stays in demo mode |
+| D22 | Grounded cards use Meta Responses API and fail closed without URL citations | Web search grounding is Responses-only and search is optional; a key alone must not make an uncited card look real | A citation-less answer falls back to labeled seed content instead of appearing as a live card |
+| D23 | Match/session sync uses durable Postgres plus short polling before Broadcast | The two-phone demo works without adding a client dependency; Supabase Broadcast can replace polling later | Polling is less immediate than Presence/Broadcast and remains visible as a demo-status transport |
 
 ---
 
