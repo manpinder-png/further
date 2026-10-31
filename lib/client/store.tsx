@@ -1,6 +1,8 @@
 "use client";
 // Client state. The event log is the source of truth: node interest/mastery/state
 // are replayed from it with lib/math.ts (plan §5.4), exactly like the time-lapse.
+// Every count shown in the UI (map, rail, profile) comes from useMapStats() below.
+// The learner's map is persisted to localStorage so a full page load keeps it.
 // Production (Connor/Amit): hydrate from Supabase (`events`, `concepts`, `concept_edges`)
 // and append events through an API route; Realtime keeps other devices in sync.
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
@@ -18,6 +20,12 @@ export interface Mission {
   intent?: string;
   added: number;
   reused: number;
+}
+
+/** Plain-language activity that isn't a map event (e.g. a match). */
+export interface Note {
+  at: number;
+  text: string;
 }
 
 export interface SessionResult {
@@ -40,11 +48,14 @@ interface State {
   profile: Profile;
   status: SystemStatus | null;
   sessions: SessionResult[];
+  notes: Note[];
   fitKey: number;
+  /** Left-rail drawer (below 1280px). */
+  rail: boolean;
 }
 
 type Action =
-  | { t: "hydrate"; now: number }
+  | { t: "hydrate"; now: number; saved?: Saved | null }
   | { t: "concept"; c: Concept; edge?: Edge }
   | { t: "edge"; e: Edge }
   | { t: "event"; slug: string; kind: EventKind; payload?: Record<string, unknown> }
@@ -56,7 +67,26 @@ type Action =
   | { t: "profile"; p: Partial<Profile> }
   | { t: "status"; s: SystemStatus }
   | { t: "session"; r: SessionResult }
+  | { t: "note"; text: string }
+  | { t: "rail"; open: boolean }
   | { t: "fit" };
+
+const SAVE_KEY = "further:map:v1";
+type Saved = Pick<State, "concepts" | "edges" | "events" | "missions" | "sessions" | "notes" | "profile">;
+function load(): Saved | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? (JSON.parse(raw) as Saved) : null;
+  } catch {
+    return null;
+  }
+}
+function save(s: State) {
+  try {
+    const { concepts, edges, events, missions, sessions, notes, profile } = s;
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ concepts, edges, events, missions: missions.filter((m) => m.status !== "running"), sessions, notes, profile }));
+  } catch { /* storage blocked: map still works for this tab */ }
+}
 
 let logId = 1;
 let evId = 10_000;
@@ -74,12 +104,25 @@ const initial: State = {
   profile: DEMO_PROFILE,
   status: null,
   sessions: [],
+  notes: [],
   fitKey: 0,
+  rail: false,
 };
 
 function reducer(s: State, a: Action): State {
   switch (a.t) {
     case "hydrate": {
+      const explorers = seedExplorers(a.now);
+      if (a.saved?.events?.length) {
+        evId = Math.max(evId, ...a.saved.events.map((e) => e.id + 1));
+        return {
+          ...s,
+          ...a.saved,
+          ready: true,
+          explorers,
+          log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: `Restored map from this browser (${a.saved.events.length} events)`, level: "info" }],
+        };
+      }
       const concepts: Record<string, Concept> = {};
       for (const slug of START_SLUGS) concepts[slug] = { ...CATALOG[slug] };
       return {
@@ -88,7 +131,7 @@ function reducer(s: State, a: Action): State {
         concepts,
         edges: CATALOG_EDGES,
         events: seedEvents(a.now),
-        explorers: seedExplorers(a.now),
+        explorers,
         log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: "Loaded 7 days of map history (seed data)", level: "info", demo: true }],
       };
     }
@@ -118,6 +161,10 @@ function reducer(s: State, a: Action): State {
       return { ...s, status: a.s };
     case "session":
       return { ...s, sessions: [a.r, ...s.sessions] };
+    case "note":
+      return { ...s, notes: [...s.notes.slice(-49), { at: Date.now(), text: a.text }] };
+    case "rail":
+      return { ...s, rail: a.open };
     case "fit":
       return { ...s, fitKey: s.fitKey + 1 };
   }
@@ -140,7 +187,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (boot.current) return;
     boot.current = true;
-    dispatch({ t: "hydrate", now: Date.now() });
+    dispatch({ t: "hydrate", now: Date.now(), saved: load() });
     fetch("/api/health")
       .then((r) => r.json())
       .then((s: SystemStatus) => {
@@ -150,6 +197,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => dispatch({ t: "log", e: { agent: "SYSTEM", msg: "Health check failed", level: "err" } }));
   }, []);
+
+  // Persist the learner's map (debounced). Skips until hydrated so seed data never overwrites a save.
+  useEffect(() => {
+    if (!state.ready) return;
+    const t = setTimeout(() => save(state), 300);
+    return () => clearTimeout(t);
+  }, [state]);
 
   const nodes = useMemo(() => replay(state.events), [state.events]);
   const say = useCallback<Ctx["say"]>((agent, msg, level = "info", demo) => dispatch({ t: "log", e: { agent, msg, level, demo } }), []);
@@ -163,4 +217,23 @@ export function useStore() {
   const c = useContext(StoreCtx);
   if (!c) throw new Error("useStore outside StoreProvider");
   return c;
+}
+
+/** The one source for every count in the UI. Map, left rail and Profile all read this. */
+export function useMapStats() {
+  const { nodes, events, missions } = useStore();
+  return useMemo(() => {
+    const list = Object.values(nodes);
+    const by = (st: string) => list.filter((n) => n.state === st).length;
+    // A session writes one "session" event per concept; group them back into sessions.
+    const sessionKeys = new Set(events.filter((e) => e.kind === "session").map((e) => `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`));
+    return {
+      concepts: list.length,
+      understood: by("understood"),
+      explored: by("explored"),
+      onMap: by("seeded"),
+      sessions: sessionKeys.size,
+      quests: missions.length,
+    };
+  }, [nodes, events, missions]);
 }

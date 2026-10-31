@@ -1,92 +1,69 @@
 "use client";
-import { useEffect, useRef } from "react";
-import { useStore } from "@/lib/client/store";
-import { useMatchJob } from "@/lib/client/hooks";
-import { Demo, Head, Panel } from "@/components/ui/bits";
+// Left rail: your quests, recent activity in plain language, and who's learning now.
+import { useMemo } from "react";
+import { useMapStats, useStore } from "@/lib/client/store";
+import { Head, Panel, useNow } from "@/components/ui/bits";
 import { CATALOG } from "@/lib/demo/seed";
-import type { AgentName } from "@/lib/types";
+import { personName, plural, relTime } from "@/lib/client/format";
+import { BUILDER_VIEW } from "@/lib/builder";
+import AgentLog from "@/components/builder/AgentLog";
 
-const AGENT_COL: Record<AgentName, string> = {
-  TRANSCRIBE: "#c86bff", EXPAND: "#f26b1d", CANONICALIZE: "#4ddfe6", GROUND: "#3aa0ff", OEMBED: "#3aa0ff",
-  CARD: "#f5c542", GRADE: "#7dff4d", MATCH: "#ff5d73", FACILITATE: "#f26b1d", GUARD: "#3ddc84", MCP: "#c86bff",
-  IMAGE: "#f5c542", SYSTEM: "#85858c",
-};
-const SRC: Record<string, string> = { voice: "MIC", text: "TXT", mcp: "MCP", lens: "CAM" };
-
-const fmt = (t: number) => new Date(t).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const MAX_ACTIVITY = 5;
 
 export default function LeftRail() {
-  const { missions, log, explorers, nodes } = useStore();
-  const runMatch = useMatchJob();
-  const logBox = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = logBox.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [log.length]);
+  const { missions, explorers, nodes } = useStore();
+  const stats = useMapStats();
+  const activity = useActivity();
+  const now = useNow();
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Panel title="Missions" right={<span className="text-[10px] text-dim">{missions.length} curiosities</span>} className="max-h-[32%]">
-        <ul className="scroll h-full px-2 pb-2">
+      <Panel title="Your quests" right={<span className="text-xs text-dim">{plural(stats.quests, "quest")}</span>} className="max-h-[34%]">
+        <ul className="scroll h-full space-y-1.5 px-3 pb-3">
           {missions.length === 0 && (
-            <li className="px-1 py-2 text-[11px] leading-relaxed text-muted">
-              No missions yet. Tap the mic and say what you&apos;re curious about. Vague is fine.
+            <li className="py-1 text-sm leading-relaxed text-muted">
+              No quests yet. Ask about anything you&apos;re curious about. Vague is fine.
             </li>
           )}
           {missions.map((m) => (
-            <li key={m.id} className="enter mb-1 border border-line bg-panel-2 px-2 py-1.5">
-              <div className="flex items-center gap-2 text-[10px] tracking-[0.12em]">
-                <span className="text-dim">{SRC[m.source]}</span>
-                <span className={m.status === "running" ? "text-signal" : m.status === "error" ? "text-err" : "text-ok"}>
-                  {m.status === "running" ? "● RUNNING" : m.status === "error" ? "✕ FAILED" : "✓ DONE"}
-                </span>
-                <span className="ml-auto text-dim tabular-nums">+{m.added} · ↺{m.reused}</span>
-              </div>
-              <p className="mt-0.5 truncate font-sans text-[12.5px]" title={m.text}>&ldquo;{m.text}&rdquo;</p>
-              {m.intent && <p className="truncate text-[10.5px] text-muted">→ {m.intent}</p>}
+            <li key={m.id} className="enter border border-line bg-panel-2 px-3 py-2">
+              <p className="truncate text-sm" title={m.text}>{m.text}</p>
+              <p className={`mt-0.5 text-xs ${m.status === "error" ? "text-err" : "text-dim"}`}>
+                {m.status === "running" ? "Adding concepts…" : m.status === "error" ? "Couldn't add concepts. Try again." : `Added ${plural(m.added, "concept")}`}
+              </p>
             </li>
           ))}
         </ul>
       </Panel>
 
-      <Panel title="Agent log" right={<span className="flex items-center gap-1.5 text-[10px] text-dim"><span className="dot cursor-blink bg-signal" />live</span>} className="flex-1">
-        <div ref={logBox} className="scroll h-full px-3 pb-2 text-[10.5px] leading-[1.55]" role="log" aria-live="polite">
-          {log.map((l) => (
-            <div key={l.id} className="enter flex gap-2">
-              <span className="shrink-0 text-dim tabular-nums">{fmt(l.at)}</span>
-              <span className="w-[82px] shrink-0 truncate" style={{ color: AGENT_COL[l.agent] }}>{l.agent}</span>
-              <span className={`min-w-0 break-words ${l.level === "err" ? "text-err" : l.level === "warn" ? "text-warn" : l.level === "ok" ? "text-text" : "text-muted"}`}>
-                {l.msg}
-                {l.demo && <span className="ml-1 text-[9px] text-[#f2a26b]">[demo]</span>}
-              </span>
-            </div>
+      <Panel title="Activity" className={BUILDER_VIEW ? "" : "flex-1"}>
+        <ol className="space-y-2 px-4 pb-3" aria-label="Recent activity">
+          {activity.length === 0 && <li className="text-sm text-muted">Nothing yet.</li>}
+          {activity.slice(0, MAX_ACTIVITY).map((a) => (
+            <li key={a.key} className="flex items-baseline gap-3 text-sm">
+              <span className="min-w-0 flex-1 text-text/90">{a.node}</span>
+              <span className="shrink-0 text-xs tabular-nums text-dim">{relTime(a.at, now)}</span>
+            </li>
           ))}
-          <div className="text-dim">
-            <span className="cursor-blink">▍</span>
-          </div>
-        </div>
+        </ol>
       </Panel>
 
-      <Panel title="Explorers" right={<button className="text-[10px] tracking-[0.12em] text-signal hover:underline" onClick={() => runMatch()}>MATCH ▶</button>} className="max-h-[30%]">
+      {BUILDER_VIEW && <AgentLog />}
+
+      <Panel title="Learning now" className="max-h-[34%]">
         <ul className="scroll h-full px-2 pb-2">
           {explorers.map((e) => {
             const at = e.activeConcepts[0];
-            const mins = Math.max(1, Math.round((Date.now() - e.lastActive) / 60000));
             return (
-              <li key={e.id} className="flex items-center gap-2 px-1 py-1">
-                <Head color={e.color} size={16} />
+              <li key={e.id} className="flex items-center gap-3 px-2 py-1.5">
+                <Head color={e.color} size={20} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[11.5px]">
-                    {e.name}
-                    {e.demo && <Demo title="Seed explorer. In the live demo, a teammate's phone takes this slot.">SEED</Demo>}
-                    {!e.openToMatch && <span className="text-[9px] text-dim">NOT OPEN</span>}
-                  </div>
-                  <div className="truncate text-[10px] text-muted">
-                    on {CATALOG[at]?.title ?? at}
-                    {nodes[at] ? <span className="text-signal"> · near you</span> : null} · {mins}m
+                  <div className="text-sm">{e.name}</div>
+                  <div className="truncate text-xs text-muted">
+                    {nodes[at] ? "on a concept near yours" : `on ${CATALOG[at]?.title ?? at}`}
                   </div>
                 </div>
-                <span className="dot" style={{ background: mins < 10 ? "var(--color-ok)" : "var(--color-dim)" }} title={mins < 10 ? "active" : "idle"} />
+                {e.openToMatch && <span className="dot bg-success" role="img" aria-label="Open to learn together" title="Open to learn together" />}
               </li>
             );
           })}
@@ -94,4 +71,41 @@ export default function LeftRail() {
       </Panel>
     </div>
   );
+}
+
+type Item = { key: string; at: number; node: React.ReactNode };
+
+/** Plain-language activity from the event log plus notes (matches). Quick runs of "added" collapse into one line. */
+function useActivity(): Item[] {
+  const { events, concepts, notes } = useStore();
+  return useMemo(() => {
+    const title = (s: string) => concepts[s]?.title ?? CATALOG[s]?.title ?? s;
+    const em = (s: string) => <em className="not-italic text-text">{title(s)}</em>;
+    const out: Item[] = [];
+    let run: { slugs: string[]; at: number; id: number } | null = null;
+    const flush = () => {
+      if (!run) return;
+      const [first, ...rest] = run.slugs;
+      out.push({
+        key: `seed-${run.id}`,
+        at: run.at,
+        node: <>Added {em(first)}{rest.length ? ` and ${plural(rest.length, "more concept")}` : ""} to your map</>,
+      });
+      run = null;
+    };
+    for (const e of events) {
+      if (e.kind === "seed") {
+        if (run && e.at - run.at < 20_000) { run.slugs.push(e.slug); run.at = e.at; continue; }
+        flush();
+        run = { slugs: [e.slug], at: e.at, id: e.id };
+        continue;
+      }
+      if (e.kind === "explain") out.push({ key: `e${e.id}`, at: e.at, node: <>Explained {em(e.slug)} in your own words</> });
+      else if (e.kind === "watch") out.push({ key: `e${e.id}`, at: e.at, node: <>Watched a source on {em(e.slug)}</> });
+      else if (e.kind === "session") out.push({ key: `e${e.id}`, at: e.at, node: <>Learned {em(e.slug)} with {personName(String(e.payload?.with ?? "a peer"))}</> });
+    }
+    flush();
+    notes.forEach((n, i) => out.push({ key: `n${i}-${n.at}`, at: n.at, node: n.text }));
+    return out.sort((a, b) => b.at - a.at);
+  }, [events, concepts, notes]);
 }

@@ -7,7 +7,7 @@ import { CATALOG } from "../demo/seed";
 import { HANDSHAKE_MS, MATCH_THRESHOLD } from "../matching";
 import { liveInterest } from "../math";
 
-let missionId = 1;
+let missionId = Date.now(); // unique across reloads (missions are persisted)
 
 /** F2: stream /api/expand and grow the map node by node. */
 export function useExpand() {

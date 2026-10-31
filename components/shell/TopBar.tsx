@@ -3,16 +3,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/client/store";
 import { BlockIcon } from "@/components/ui/bits";
+import { BUILDER_VIEW } from "@/lib/builder";
 
-const NAV = [
-  { href: "/", label: "Map" },
-  { href: "/session", label: "Session" },
-  { href: "/profile", label: "Profile" },
-  { href: "/connectors", label: "Connectors" },
-  { href: "/ops", label: "Ops" },
-];
-
-// Each backend dependency gets a pill: green live, orange demo, red down (DESIGN §2.1).
+// Builder view only: one pill per backend dependency (green live, orange demo, red down).
 const PILLS: { key: string; label: string; title: string }[] = [
   { key: "muse", label: "Muse Spark", title: "Muse Spark 1.3: expansion, cards, grading, facilitation" },
   { key: "transcribe", label: "Voice", title: "Muse Voice Transcribe" },
@@ -23,44 +16,73 @@ const PILLS: { key: string; label: string; title: string }[] = [
   { key: "mcp", label: "MCP", title: "MCP server for Meta AI / Muse connectors" },
 ];
 
+const tab = "flex h-full items-center px-3 text-sm transition-colors";
+
 export default function TopBar() {
   const path = usePathname();
-  const { status } = useStore();
-  const anyDemo = status && Object.values(status).includes("demo");
+  const { status, match, rail, dispatch } = useStore();
+  const onMap = path === "/";
+  const sessionLive = !!match && ["pending", "waiting", "accepted"].includes(match.status);
+  const sessionHref = match?.status === "accepted" ? `/session?m=${match.id}` : "/session";
+  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+
+  const link = (href: string, label: string) => (
+    <Link key={href} href={href} aria-current={isActive(href) ? "page" : undefined} className={`${tab} ${isActive(href) ? "text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted hover:text-text"}`}>
+      {label}
+    </Link>
+  );
+
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-bg px-3 sm:gap-4">
-      <Link href="/" className="flex items-center gap-2" aria-label="Further home">
+    <header className="flex h-12 shrink-0 items-center gap-1 overflow-hidden whitespace-nowrap border-b border-line bg-bg pl-1 pr-2 sm:gap-3 sm:px-3">
+      {onMap && (
+        <button
+          className="btn btn-ghost btn-icon border-transparent xl:hidden"
+          onClick={() => dispatch({ t: "rail", open: !rail })}
+          aria-label={rail ? "Close quests and activity" : "Open quests and activity"}
+          aria-expanded={rail}
+          aria-controls="left-rail"
+          title="Quests and activity"
+        >
+          <MenuIcon />
+        </button>
+      )}
+      <Link href="/" className="flex shrink-0 items-center gap-2 px-1" aria-label="Further home">
         <BlockIcon kind="diamond" slug="further" size={18} />
-        <span className="pixel text-[15px] tracking-wider">FURTHER</span>
-        <span className="hidden text-[10px] tracking-[0.2em] text-dim sm:inline">/// MISSION CONTROL</span>
+        <span className="pixel hidden text-md tracking-wider min-[380px]:inline">FURTHER</span>
       </Link>
-      <nav className="flex h-full items-stretch sm:ml-2" aria-label="Main">
-        {NAV.map((n) => {
-          const active = n.href === "/" ? path === "/" : path.startsWith(n.href);
-          return (
-            <Link key={n.href} href={n.href} className={`flex items-center px-2.5 text-[11px] uppercase tracking-[0.12em] transition-colors sm:px-3 ${active ? "text-text shadow-[inset_0_-2px_0_var(--color-signal)]" : "text-muted hover:text-text"} ${n.href === "/session" || n.href === "/connectors" ? "hidden md:flex" : ""}`}>
-              {n.label}
-            </Link>
-          );
-        })}
+      <nav className="flex h-full items-stretch" aria-label="Main">
+        {link("/", "Map")}
+        {sessionLive || path.startsWith("/session") ? (
+          link(sessionHref, "Session")
+        ) : (
+          <span className={`${tab} cursor-not-allowed text-dim`} aria-disabled="true" title="Start a session from a match on the map">
+            Session
+          </span>
+        )}
+        {link("/profile", "Profile")}
+        {BUILDER_VIEW && link("/connectors", "Connectors")}
+        {BUILDER_VIEW && link("/ops", "Ops")}
       </nav>
-      <div className="ml-auto hidden items-center gap-1.5 xl:flex">
-        {PILLS.map((p) => {
-          const mode = status ? (status as unknown as Record<string, string>)[p.key] : undefined;
-          const col = mode === "live" ? "var(--color-ok)" : mode === "demo" ? "var(--color-signal)" : mode === "down" ? "var(--color-err)" : "var(--color-dim)";
-          return (
-            <span key={p.key} className="chip" title={`${p.title}: ${mode ?? "checking"}`}>
-              <span className="dot" style={{ background: col, boxShadow: mode === "live" ? `0 0 6px ${col}` : "none" }} />
-              {p.label}
-            </span>
-          );
-        })}
-      </div>
-      {anyDemo && (
-        <Link href="/ops" className="chip chip-demo ml-auto xl:ml-0" title="Some systems have no keys yet and use labeled demo data. See Ops.">
-          <span className="dot cursor-blink" style={{ background: "var(--color-signal)" }} /> Demo<span className="hidden sm:inline"> mode</span>
-        </Link>
+      {BUILDER_VIEW && (
+        <div className="ml-auto hidden items-center gap-1.5 2xl:flex">
+          {PILLS.map((p) => {
+            const mode = status ? (status as unknown as Record<string, string>)[p.key] : undefined;
+            const col = mode === "live" ? "var(--color-success)" : mode === "demo" ? "var(--color-accent)" : mode === "down" ? "var(--color-err)" : "var(--color-dim)";
+            return (
+              <span key={p.key} className="chip" title={`${p.title}: ${mode ?? "checking"}`}>
+                <span className="dot" style={{ background: col }} />
+                {p.label}
+              </span>
+            );
+          })}
+        </div>
       )}
     </header>
   );
 }
+
+const MenuIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden>
+    <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);

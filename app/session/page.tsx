@@ -1,12 +1,15 @@
 "use client";
-// F8 / E6: AI-facilitated jigsaw session. Each person teaches the piece they know.
+// F8 / E6: AI-facilitated jigsaw session ("Today's swap" in the UI). Each person teaches the piece they know.
+// Layout: ≥1280 three columns · 768–1279 swap panel + chat · <768 chat-first with tabs.
 // Every human message → /api/session/:id/message → Llama Guard → (safe) broadcast.
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/client/store";
 import { CATALOG, seedExplorers } from "@/lib/demo/seed";
-import { Demo, Head, NodeIcon } from "@/components/ui/bits";
+import { Demo, Head, NodeIcon, ShieldIcon } from "@/components/ui/bits";
+import { BUILDER_VIEW } from "@/lib/builder";
+import { personName } from "@/lib/client/format";
 
 type Msg = {
   id: number;
@@ -38,27 +41,27 @@ function Session() {
   if (!ready) return null;
   if (!active)
     return (
-      <div className="grid-bg flex h-full items-center justify-center p-6">
+      <div className="grid-bg scroll flex h-full items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-lg border border-line bg-panel">
-          <header className="flex h-9 items-center border-b border-line px-3"><h1 className="label">Session</h1></header>
+          <header className="flex h-10 items-center border-b border-line px-4"><h1 className="label">Session</h1></header>
           <div className="space-y-4 p-5">
-            <p className="font-sans text-[15px] text-text/90">No session right now.</p>
-            <p className="font-sans text-[13.5px] leading-relaxed text-muted">
+            <p className="text-md text-text/90">No session right now.</p>
+            <p className="text-sm text-muted">
               Sessions start when someone exploring the same part of the map is a step ahead on a neighbouring concept, and you <em>both</em> accept within 60 seconds. Nothing connects without both of you.
             </p>
             {sessions.length > 0 && (
               <div>
                 <h2 className="label mb-2">Past sessions</h2>
                 {sessions.map((s) => (
-                  <div key={s.at} className="mb-1 border border-line bg-panel-2 p-2 text-[12px]">
-                    with {s.peer} · {s.concepts.map((c) => CATALOG[c]?.title ?? c).join(", ")}
+                  <div key={s.at} className="mb-1 border border-line bg-panel-2 px-3 py-2 text-sm">
+                    With {personName(s.peer)} · {s.concepts.map((c) => CATALOG[c]?.title ?? c).join(", ")}
                   </div>
                 ))}
               </div>
             )}
             <div className="flex gap-2">
               <Link href="/" className="btn">Back to map</Link>
-              <button className="btn btn-ghost" onClick={() => setForced(true)} title="Rehearsal only: opens a session with a seed peer">Rehearse with seed peer</button>
+              {BUILDER_VIEW && <button className="btn btn-ghost" onClick={() => setForced(true)} title="Rehearsal only: opens a session with a seed peer">Rehearse with seed peer</button>}
             </div>
           </div>
         </div>
@@ -76,7 +79,7 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
   const id = useRef(1);
   const turn = useRef(0);
   const [msgs, setMsgs] = useState<Msg[]>([
-    { id: 0, who: "system", text: `Session started · jigsaw · 10 min · both accepted` },
+    { id: 0, who: "system", text: `Session started · 10 minutes` },
     {
       id: 1,
       who: "facilitator",
@@ -92,6 +95,7 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
   const [blocked, setBlocked] = useState(false);
   const [reported, setReported] = useState(false);
   const [left, setLeft] = useState(600);
+  const [tab, setTab] = useState<"chat" | "swap" | "safety">("chat");
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs.length]);
@@ -117,7 +121,7 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
     if (!r.ok) { push({ who: "system", text: d.error ?? "Message held." }); return; }
     say("GUARD", `${d.verdict.safe ? "safe" : `UNSAFE ${d.verdict.category}`} · ${d.verdict.engine} · ${d.verdict.ms}ms`, d.verdict.safe ? "ok" : "err", d.verdict.engine !== "llama-guard");
     if (!d.delivered) {
-      push({ who: "system", text: `Message held by Llama Guard (${d.verdict.category}). It wasn't delivered.` });
+      push({ who: "system", text: `This message was held by the safety check and wasn't delivered.` });
       return;
     }
     push({ who, text: body, guard: d.verdict, demo: who === "peer" });
@@ -145,102 +149,130 @@ function Room({ peerId, you, youStrong, peerStrong, shared }: { peerId: string; 
 
   const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
 
+  const swap = (
+    <>
+      <Piece label="You teach" color="#f26b1d" slug={youStrong} title={ctx.aStrong} nodes={nodes} />
+      <Piece label={`${peer.name} teaches`} color={peer.color} slug={peerStrong} title={ctx.bStrong} demo={peer.demo} />
+      <p className="border-b border-line px-4 py-3 text-sm text-muted">Both exploring <span className="text-text">{ctx.shared}</span></p>
+    </>
+  );
+  const safety = (
+    <ul className="space-y-3 p-4 text-sm text-muted">
+      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Every message is checked for safety before the other person sees it.</li>
+      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Block and Report are always one tap away.</li>
+      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Learning with others is 18+ only.</li>
+      {BUILDER_VIEW && (
+        <li className="border border-line bg-bg p-2 font-mono text-2xs text-dim">
+          Text chat over Supabase Broadcast.<br />POST /api/session/:id/message<br />→ moderate() · Llama Guard<br />→ broadcast session:{"{id}"}<br />→ facilitator turn (Muse Spark)
+        </li>
+      )}
+    </ul>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col lg:grid lg:grid-cols-[300px_minmax(0,1fr)_300px]">
-      {/* Left: the two pieces of the jigsaw */}
-      <aside className="hidden min-h-0 flex-col border-r border-line bg-panel lg:flex">
-        <header className="flex h-9 items-center border-b border-line px-3"><h2 className="label">Jigsaw</h2></header>
-        <Piece who={you} color="#f26b1d" slug={youStrong} title={ctx.aStrong} nodes={nodes} />
-        <div className="flex items-center justify-center gap-2 border-b border-line py-2 text-[10px] tracking-[0.14em] text-dim">↓ BOTH EXPLORING {ctx.shared.toUpperCase()} ↓</div>
-        <Piece who={peer.name} color={peer.color} slug={peerStrong} title={ctx.bStrong} demo={peer.demo} />
-        <div className="mt-auto border-t border-line p-3 text-[10.5px] leading-relaxed text-dim">
-          Facilitator: Muse Spark with the jigsaw prompt. Turns ≤ 40 words, never lectures.
+    <div className="flex h-full min-h-0 flex-col md:grid md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_300px]">
+      {/* Left: today's swap (+ safety below 1280px) */}
+      <aside className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex">
+        <header className="flex h-10 shrink-0 items-center border-b border-line px-4"><h2 className="label">Today&apos;s swap</h2></header>
+        {swap}
+        <div className="scroll min-h-0 flex-1 xl:hidden">
+          <h2 className="label px-4 pt-4">Safety</h2>
+          {safety}
         </div>
       </aside>
 
       {/* Center: chat */}
       <section className="flex min-h-0 flex-1 flex-col">
-        <header className="flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
-          <Head color={peer.color} size={18} />
-          <span className="text-[12px]">with {peer.name}</span>
-          {peer.demo && <Demo title="Seed peer for rehearsal. In the live demo this is a teammate on a second phone.">SEED PEER</Demo>}
-          <span className="pixel ml-auto text-[14px] tabular-nums text-signal">{mm}:{ss}</span>
-          <button className="btn h-7 px-2 text-[10px]" onClick={() => { setBlocked(true); say("GUARD", `blocked ${peer.name}; won't be matched again`, "warn"); }} disabled={blocked}>{blocked ? "Blocked" : "Block"}</button>
-          <button className="btn h-7 px-2 text-[10px]" onClick={() => { setReported(true); say("GUARD", `report filed on session demo`, "warn"); }} disabled={reported}>{reported ? "Reported" : "Report"}</button>
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3 sm:gap-3">
+          <Head color={peer.color} size={20} />
+          <span className="min-w-0 truncate text-sm">with {peer.name}</span>
+          <Demo title="Seed peer for rehearsal.">SEED PEER</Demo>
+          <span className="ml-auto font-mono text-md font-medium tabular-nums" aria-label={`${Math.floor(left / 60)} minutes ${left % 60} seconds left`}>{mm}:{ss}</span>
+          <button className="btn shrink-0 px-3" onClick={() => { setBlocked(true); say("GUARD", `blocked ${peer.name}; won't be matched again`, "warn"); }} disabled={blocked}>{blocked ? "Blocked" : "Block"}</button>
+          <button className="btn shrink-0 px-3" onClick={() => { setReported(true); say("GUARD", `report filed on session demo`, "warn"); }} disabled={reported}>{reported ? "Reported" : "Report"}</button>
         </header>
-        <ol className="flex shrink-0 border-b border-line text-[10px] tracking-[0.12em]" aria-label="Session phases">
-          {PHASES.map((p, i) => (
-            <li key={p} className={`flex-1 border-r border-line px-2 py-1.5 last:border-r-0 ${i === phase ? "bg-signal-dim text-signal" : i < phase ? "text-text" : "text-dim"}`}>
-              {i < phase ? "✓" : `0${i + 1}`} {p.toUpperCase()}
-            </li>
+
+        {/* Phones: chat-first, with the swap and safety one tab away */}
+        <div className="flex shrink-0 border-b border-line md:hidden" role="tablist" aria-label="Session panels">
+          {([["chat", "Chat"], ["swap", "Today's swap"], ["safety", "Safety"]] as const).map(([k, l]) => (
+            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`touch-target flex-1 px-2 text-sm ${tab === k ? "text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted"}`}>{l}</button>
           ))}
-        </ol>
-        <div ref={box} className="scroll grid-bg min-h-0 flex-1 space-y-3 p-4" role="log" aria-live="polite">
-          {msgs.map((m) => <Bubble key={m.id} m={m} you={you} peer={peer.name} peerColor={peer.color} />)}
-          {sending && <div className="text-[11px] text-muted"><span className="cursor-blink">▍</span> moderating…</div>}
-          {blocked && <div className="text-center text-[11px] text-warn">You blocked {peer.name}. Their messages are hidden.</div>}
         </div>
-        {ended ? (
-          <div className="enter border-t border-signal bg-panel p-4">
-            <h2 className="label mb-2 !text-signal">Session complete · maps updated</h2>
-            <ul className="mb-3 space-y-1 text-[12px]">
-              <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={youStrong} size={14} /> {ctx.aStrong}: mastery +0.2, <span className="text-diamond">learned with {peer.name}</span></li>
-              <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={peerStrong} size={14} /> {ctx.bStrong}: mastery +0.2</li>
-              <li className="flex items-center gap-2"><NodeIcon state="seeded" mastery={0} slug="hbm" size={14} /> Suggested next: <span className="text-diamond">HBM memory</span> <span className="text-dim">· add it from the map, or from any AI assistant via MCP</span></li>
-            </ul>
-            <button className="btn btn-primary" onClick={() => { dispatch({ t: "match", m: null }); dispatch({ t: "fit" }); router.push("/"); }}>See your map</button>
+        {tab === "swap" && <div className="scroll min-h-0 flex-1 bg-panel md:hidden" role="tabpanel">{swap}</div>}
+        {tab === "safety" && <div className="scroll min-h-0 flex-1 bg-panel md:hidden" role="tabpanel">{safety}</div>}
+
+        <div className={`min-h-0 flex-1 flex-col ${tab === "chat" ? "flex" : "hidden md:flex"}`}>
+          <ol className="flex shrink-0 overflow-x-auto border-b border-line text-xs" aria-label="Session steps">
+            {PHASES.map((p, i) => (
+              <li key={p} aria-current={i === phase ? "step" : undefined} className={`flex flex-1 items-center gap-1.5 whitespace-nowrap border-r border-line px-3 py-2 last:border-r-0 ${i === phase ? "bg-panel-2 text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : i < phase ? "text-muted" : "text-dim"}`}>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center border font-mono text-2xs ${i < phase ? "border-success text-success" : i === phase ? "border-text" : "border-line-2"}`}>{i < phase ? "✓" : i + 1}</span>
+                <span className={i === phase ? "" : "sr-only sm:not-sr-only"}>{p}</span>
+              </li>
+            ))}
+          </ol>
+          <div ref={box} className="scroll grid-bg min-h-0 flex-1 space-y-3 p-4" role="log" aria-live="polite">
+            {msgs.map((m) => <Bubble key={m.id} m={m} you={you} peer={peer.name} peerColor={peer.color} />)}
+            {sending && <div className="text-xs text-muted"><span className="cursor-blink">▍</span> Checking message…</div>}
+            {blocked && <div className="text-center text-xs text-warn">You blocked {peer.name}. Their messages are hidden.</div>}
           </div>
-        ) : (
-          <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); const v = text.trim(); if (v && !sending) { setText(""); send("me", v); } }}>
-            <input className="field h-10 font-sans text-[14px]" value={text} onChange={(e) => setText(e.target.value)} placeholder={done ? "Session wrapped. End it to update both maps." : "Your turn…"} maxLength={1000} disabled={done} aria-label="Message" />
-            {done ? <button type="button" className="btn btn-primary h-10" onClick={end}>End & update maps</button> : <button className="btn btn-primary h-10" disabled={sending}>Send</button>}
-          </form>
-        )}
+          {ended ? (
+            <div className="enter border-t border-line-2 bg-panel p-4">
+              <h2 className="mb-2 text-md font-semibold">Session complete. Both maps are updated.</h2>
+              <ul className="mb-3 space-y-1.5 text-sm">
+                <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={youStrong} size={16} /> {ctx.aStrong}: deeper understanding · <span className="text-mastery">learned with {peer.name}</span></li>
+                <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={peerStrong} size={16} /> {ctx.bStrong}: deeper understanding</li>
+                <li className="flex items-center gap-2"><NodeIcon state="seeded" mastery={0} slug="hbm" size={16} /> Suggested next: <span className="text-text">HBM memory</span> <span className="text-muted">· add it from the map or a connected app</span></li>
+              </ul>
+              <button className="btn btn-primary" onClick={() => { dispatch({ t: "match", m: null }); dispatch({ t: "fit" }); router.push("/"); }}>See your map</button>
+            </div>
+          ) : (
+            <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); const v = text.trim(); if (v && !sending) { setText(""); send("me", v); } }}>
+              <input className="field h-11 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder={done ? "Session wrapped. End it to update both maps." : "Your turn…"} maxLength={1000} disabled={done} aria-label="Message" />
+              {done ? <button type="button" className="btn btn-primary h-11 shrink-0" onClick={end}>End &amp; update maps</button> : <button className="btn btn-primary h-11 shrink-0" disabled={sending}>Send</button>}
+            </form>
+          )}
+        </div>
       </section>
 
-      {/* Right: safety + system */}
-      <aside className="hidden min-h-0 flex-col border-l border-line bg-panel lg:flex">
-        <header className="flex h-9 items-center border-b border-line px-3"><h2 className="label">Safety</h2></header>
-        <div className="space-y-3 p-3 text-[11.5px] leading-relaxed text-muted">
-          <p><span className="text-ok">●</span> Every message is checked by <span className="text-text">Llama Guard</span> before the other person sees it.</p>
-          <p><span className="text-ok">●</span> Block and Report are always one tap away.</p>
-          <p><span className="text-ok">●</span> 18+ only for peer matching in the MVP.</p>
-          <p><span className="text-ok">●</span> Text chat over Supabase Broadcast. Voice uses the same transcribe button; calls are out of scope.</p>
-          <div className="border border-line bg-bg p-2 font-mono text-[10px] text-dim">
-            POST /api/session/:id/message<br />→ moderate() · Llama Guard<br />→ broadcast session:{"{id}"}<br />→ facilitator turn (Muse Spark)
-          </div>
-        </div>
+      {/* Right: safety (≥1280px) */}
+      <aside className="hidden min-h-0 flex-col border-l border-line bg-panel xl:flex">
+        <header className="flex h-10 items-center border-b border-line px-4"><h2 className="label">Safety</h2></header>
+        {safety}
       </aside>
     </div>
   );
 }
 
-function Piece({ who, color, slug, title, demo, nodes }: { who: string; color: string; slug: string; title: string; demo?: boolean; nodes?: Record<string, { state: string; mastery: number }> }) {
+function Piece({ label, color, slug, title, demo, nodes }: { label: string; color: string; slug: string; title: string; demo?: boolean; nodes?: Record<string, { state: string; mastery: number }> }) {
   const n = nodes?.[slug];
   return (
-    <div className="border-b border-line p-3">
-      <div className="mb-2 flex items-center gap-2 text-[11px]"><Head color={color} size={14} /> {who.toUpperCase()} TEACHES {demo && <Demo>SEED</Demo>}</div>
+    <div className="border-b border-line p-4">
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted"><Head color={color} size={14} /> {label} {demo && <Demo>SEED</Demo>}</div>
       <div className="flex items-center gap-3 border border-line bg-bg p-3">
-        <NodeIcon state={n?.state ?? "understood"} mastery={n?.mastery ?? 0.8} slug={slug} size={30} />
-        <span className="font-sans text-[15px]">{title}</span>
+        <NodeIcon state={n?.state ?? "understood"} mastery={n?.mastery ?? 0.8} slug={slug} size={28} />
+        <span className="text-md">{title}</span>
       </div>
     </div>
   );
 }
 
 function Bubble({ m, you, peer, peerColor }: { m: Msg; you: string; peer: string; peerColor: string }) {
-  if (m.who === "system") return <div className="text-center text-[10.5px] tracking-[0.1em] text-dim">— {m.text} —</div>;
-  const fac = m.who === "facilitator";
+  if (m.who === "system") return <div className="text-center text-xs text-dim">{m.text}</div>;
+  const guide = m.who === "facilitator";
   const mine = m.who === "me";
   return (
     <div className={`enter flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] border px-3 py-2 ${fac ? "border-signal/50 border-l-2 border-l-signal bg-panel" : mine ? "border-line-2 bg-panel-2" : "border-line bg-panel"}`}>
-        <div className="mb-1 flex items-center gap-2 text-[9.5px] tracking-[0.14em] text-muted">
-          {fac ? <span className="text-signal">FACILITATOR · MUSE SPARK</span> : <span className="flex items-center gap-1.5">{!mine && <Head color={peerColor} size={11} />}{(mine ? you : peer).toUpperCase()}</span>}
+      <div className={`max-w-[85%] border px-3 py-2 ${guide ? "border-line-2 border-l-2 border-l-text/60 bg-panel" : mine ? "border-line-2 bg-panel-2" : "border-line bg-panel"}`}>
+        <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+          {guide ? <span className="font-medium text-text">Guide</span> : <span className="flex items-center gap-1.5">{!mine && <Head color={peerColor} size={12} />}{mine ? you : peer}</span>}
           {m.demo && <Demo />}
-          {m.guard && <span className={m.guard.safe ? "text-ok" : "text-err"} title={`${m.guard.engine} · ${m.guard.ms}ms`}>✓ GUARD</span>}
+          {m.guard && (
+            m.guard.safe
+              ? <span className="text-success" title="Checked for safety" aria-label="Checked for safety"><ShieldIcon /></span>
+              : <span className="text-err" title="Flagged by the safety check">Flagged</span>
+          )}
         </div>
-        <p className="whitespace-pre-line font-sans text-[14px] leading-relaxed">{m.text}</p>
+        <p className="whitespace-pre-line text-base">{m.text}</p>
       </div>
     </div>
   );

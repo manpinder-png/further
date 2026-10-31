@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
-/* Mission-control chrome tokens (DESIGN §2.1). One accent: --signal. */
+/*
+ * Tokens (DESIGN §2.1). Color roles:
+ *  accent  — primary CTA, current selection, active tab. Nothing else.
+ *  success — online, safety-checked, understood badge.
+ *  mastery — understood blocks and mastery bars.
+ *  err     — errors only.
+ *  everything else is neutral gray. All text tokens are ≥ 4.5:1 on bg, panel and panel-2.
+ */
 @theme {
   --color-bg: #0a0a0b;
   --color-panel: #111113;
@@ -8,18 +15,41 @@
   --color-line: #232327;
   --color-line-2: #2e2e34;
   --color-text: #ece9e4;
-  --color-muted: #85858c;
-  --color-dim: #55555c;
-  --color-signal: #f26b1d;
-  --color-signal-dim: #3a1d0c;
-  --color-ok: #3ddc84;
+  --color-muted: #a3a3ab;   /* secondary text: 7.5:1 on panel */
+  --color-dim: #85858d;     /* tertiary text: ≥ 4.8:1 on panel-2 */
+  --color-faint: #3a3a40;   /* decorative only, never text */
+  --color-accent: #f26b1d;
+  --color-accent-hover: #ff7d33;
+  --color-accent-soft: #3a1d0c;
+  --color-success: #3ddc84;
+  --color-mastery: #4ddfe6;
+  --color-mastery-soft: #0f2a2c;
+  --color-err: #ff6b6b;
   --color-warn: #f5c542;
-  --color-err: #ff5d5d;
-  --color-diamond: #4ddfe6;
-  --color-gold: #f5c542;
+
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --font-pixel: var(--font-silkscreen), monospace;
+
+  /* Type scale. Nothing below 11px. */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 1.45;
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 13px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14px;
+  --text-base--line-height: 1.55;
+  --text-md: 15px;
+  --text-md--line-height: 1.5;
+  --text-lg: 17px;
+  --text-lg--line-height: 1.35;
+  --text-xl: 20px;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 34px;
+  --text-3xl--line-height: 1;
 }
 
 :root { color-scheme: dark; }
@@ -27,63 +57,77 @@ html, body { height: 100%; }
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
-/* Bracket label: [ MISSIONS ] */
+/* Small section label (mono). */
 .label {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-muted);
+  font-weight: 500;
 }
-.label::before { content: "[ "; color: var(--color-dim); }
-.label::after { content: " ]"; color: var(--color-dim); }
 
 .pixel { font-family: var(--font-pixel); letter-spacing: 0.02em; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 20px; padding: 0 7px;
+  height: 22px; padding: 0 8px;
   border: 1px solid var(--color-line-2);
-  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs); letter-spacing: 0.06em;
   color: var(--color-muted); white-space: nowrap;
 }
-.chip-demo { border-color: #4a2a14; color: #f2a26b; background: #1c120b; }
-.chip-ok { border-color: #1d4a31; color: var(--color-ok); }
+.chip-success { border-color: #1d4a31; color: var(--color-success); }
+.chip-mastery { border-color: #1b4a4d; color: var(--color-mastery); }
+.chip-accent { border-color: var(--color-accent); color: var(--color-accent); }
 .chip-err { border-color: #5a2323; color: var(--color-err); }
-.chip-signal { border-color: var(--color-signal); color: var(--color-signal); }
+/* Builder view only: sample-data badge. */
+.chip-demo { border-color: #4a2a14; color: #f2a26b; background: #1c120b; }
 
-.dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; }
+.dot { width: 8px; height: 8px; border-radius: 9999px; display: inline-block; flex-shrink: 0; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  height: 34px; padding: 0 14px;
+  min-height: 36px; padding: 0 14px;
   border: 1px solid var(--color-line-2);
-  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm); font-weight: 500;
   color: var(--color-text); background: var(--color-panel-2);
   transition: border-color .15s, background .15s, color .15s;
 }
-.btn:hover { border-color: var(--color-muted); }
-.btn:focus-visible, .map-btn:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 1px solid var(--color-signal); outline-offset: 1px;
-}
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn-primary { background: var(--color-signal); border-color: var(--color-signal); color: #0a0a0b; font-weight: 600; }
-.btn-primary:hover { background: #ff7d33; border-color: #ff7d33; }
+.btn:hover { border-color: var(--color-dim); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #0a0a0b; font-weight: 600; }
+.btn-primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 .btn-ghost { background: transparent; }
+.btn-icon { padding: 0; width: 36px; }
 
-.map-btn { width: 30px; height: 30px; font-size: 14px; color: var(--color-text); }
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-text); outline-offset: 2px;
+}
+
+.map-btn { width: 36px; height: 36px; font-size: var(--text-md); color: var(--color-text); display: flex; align-items: center; justify-content: center; }
 .map-btn:hover { background: var(--color-panel-2); }
 
 .field {
   width: 100%; background: var(--color-bg); border: 1px solid var(--color-line-2);
-  padding: 8px 10px; font-size: 13px; color: var(--color-text);
+  padding: 8px 10px; font-size: var(--text-base); color: var(--color-text);
 }
 .field::placeholder { color: var(--color-dim); }
+
+/* Touch targets ≥ 44px on phones and coarse pointers. */
+@media (max-width: 767px), (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-icon { width: 44px; }
+  .map-btn { width: 44px; height: 44px; }
+  .touch-target { min-height: 44px; min-width: 44px; }
+}
 
 /* Hairline scrollbars */
 .scroll { scrollbar-width: thin; scrollbar-color: #2e2e34 transparent; overflow-y: auto; }
@@ -93,18 +137,19 @@ body {
   background-image: radial-gradient(circle at 1px 1px, #1d1d22 1px, transparent 0);
   background-size: 16px 16px;
 }
-
 }
 
 @keyframes blink { 50% { opacity: 0; } }
 .cursor-blink { animation: blink 1s steps(1) infinite; }
 @keyframes slideup { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .enter { animation: slideup .25s ease-out both; }
+@keyframes slidein { from { transform: translateX(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.enter-left { animation: slidein .2s ease-out both; }
 @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .scanbar { position: relative; overflow: hidden; }
 .scanbar::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(242,107,29,.35), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
   animation: scan 1.2s linear infinite;
 }
 
@@ -112,5 +157,6 @@ body {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* Mermaid diagrams on the dark card */
+/* Mermaid diagrams */
 .mermaid-wrap svg { max-width: 100%; height: auto; }
+.mermaid-wrap.mermaid-large svg { width: 100%; max-height: 72vh; }

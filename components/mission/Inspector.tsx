@@ -1,14 +1,14 @@
 "use client";
-// [ INSPECTOR ] — the node card (plan §5.3, E3). Anti-slop by design: one short,
-// real, cited source, checked live; diagrams marked non-authoritative; explain-back opt-in.
+// Inspector: the concept card (plan §5.3, E3). One short, real, cited source, checked live;
+// diagrams marked as a sketch; explain-back opt-in. Order: title → hook → source → explain → diagram.
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/client/store";
 import { transcribeBlob, useRecorder } from "@/lib/client/hooks";
 import { liveInterest } from "@/lib/math";
-import { blockKindFor } from "@/components/map/pixels";
-import { BlockIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
+import { BlockIcon, CloseIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
 import Mermaid from "@/components/ui/Mermaid";
-import type { Resource } from "@/lib/types";
+import { STATE_LABEL, personName } from "@/lib/client/format";
+import type { NodeState, Resource } from "@/lib/types";
 
 interface Card {
   slug: string;
@@ -28,10 +28,13 @@ function verify(url: string) {
 }
 const ytId = (u: string) => u.match(/(?:v=|youtu\.be\/)([\w-]{11})/)?.[1];
 
+export function StateBadge({ state }: { state: NodeState }) {
+  return <span className={`chip ${state === "understood" ? "chip-success" : ""}`}>{STATE_LABEL[state]}</span>;
+}
+
 export default function Inspector({ onClose }: { onClose?: () => void }) {
   const { selected, concepts, nodes, track, say, dispatch } = useStore();
   const [card, setCard] = useState<Card | null>(null);
-  const [loadMs, setLoadMs] = useState(0);
   const c = selected ? concepts[selected] : null;
   const n = selected ? nodes[selected] : null;
 
@@ -50,76 +53,69 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
     fetch(`/api/card/${selected}`).then((r) => r.json()).then((d: Card) => {
       const ms = Math.round(performance.now() - t0);
       setCard(d);
-      setLoadMs(ms);
       say("CARD", `${selected}: ${d.cached ? "cache hit" : "generated"} in ${ms}ms${d.cached ? " (target < 500ms)" : ""}`, d.cached ? "ok" : "info", d.demo);
     });
   }, [selected, say]);
 
   if (!c || !n) return <MapSummary />;
   const interest = liveInterest(n);
+  const close = () => { dispatch({ t: "select", slug: null }); onClose?.(); };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
-        <h2 className="label">Inspector</h2>
-        <button className="text-[11px] text-muted hover:text-text" onClick={() => { dispatch({ t: "select", slug: null }); onClose?.(); }} aria-label="Close inspector">ESC ✕</button>
+      <header className="flex h-10 shrink-0 items-center justify-between border-b border-line pl-4 pr-1">
+        <h2 className="label">Concept</h2>
+        <button className="btn btn-ghost btn-icon min-h-9 border-transparent text-muted hover:text-text" onClick={close} aria-label="Close concept card" title="Close (Esc)">
+          <CloseIcon />
+        </button>
       </header>
       <div className="scroll min-h-0 flex-1">
-        {/* Cover tile: Muse Image in production, decorative only */}
-        <div className="grid-bg relative flex min-h-[84px] items-center gap-3 border-b border-line px-4 py-3">
-          <NodeIcon state={n.state} mastery={n.mastery} slug={c.slug} size={44} />
-          <div className="min-w-0">
-            <h3 className="font-sans text-[19px] font-semibold leading-tight">{c.title}</h3>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className={`chip h-[18px] ${n.state === "understood" ? "chip-ok" : n.state === "explored" ? "chip-signal" : ""}`}>{n.state}</span>
-              <span className="text-[10px] text-dim">{c.slug}</span>
-              {n.learnedWith && <span className="text-[10px] text-diamond">learned with {n.learnedWith}</span>}
+        {/* 1. Title + state */}
+        <div className="border-b border-line px-4 py-3">
+          <div className="flex items-center gap-3">
+            <NodeIcon state={n.state} mastery={n.mastery} slug={c.slug} size={40} />
+            <div className="min-w-0">
+              <h3 className="text-xl font-semibold">{c.title}</h3>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <StateBadge state={n.state} />
+                {n.learnedWith && <span className="text-xs text-muted">Learned with {personName(n.learnedWith)}</span>}
+              </div>
             </div>
           </div>
-          <span className="absolute bottom-1 right-2 text-[8.5px] tracking-[0.12em] text-dim" title="Cover art comes from Muse Image ($0.01, cached per concept). Decorative only.">COVER · MUSE IMAGE</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 border-b border-line px-4 py-3">
-          <Pips value={interest} />
-          <XpBar value={n.mastery} />
-        </div>
-
-        <section className="border-b border-line px-4 py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h4 className="label">Hook</h4>
-            {card?.demo && <Demo title="Hook text is seed copy. In production it's written from the source by Muse Spark and cites it." />}
+          <div className="mt-3 grid grid-cols-2 gap-4">
+            <Pips value={interest} />
+            <XpBar value={n.mastery} />
           </div>
+        </div>
+
+        {/* 2. Hook */}
+        <section className="border-b border-line px-4 py-3" aria-label="Summary">
           {!card ? (
-            <div className="space-y-2"><div className="scanbar h-3 w-11/12 bg-panel-2" /><div className="scanbar h-3 w-9/12 bg-panel-2" /><div className="scanbar h-3 w-10/12 bg-panel-2" /></div>
+            <div className="space-y-2" aria-label="Loading"><div className="scanbar h-3 w-11/12 bg-panel-2" /><div className="scanbar h-3 w-9/12 bg-panel-2" /><div className="scanbar h-3 w-10/12 bg-panel-2" /></div>
           ) : (
-            <p className="font-sans text-[14px] leading-relaxed text-text/90">
+            <p className="text-base text-text/90">
               {card.hook.map((s, i) => (
                 <span key={i}>
                   {s}
-                  {card.resource && i < 2 && <a href="#source" className="ml-0.5 align-super text-[10px] text-signal">[1]</a>}{" "}
+                  {card.resource && i < 2 && <a href="#source" className="ml-0.5 align-super text-2xs text-muted underline-offset-2 hover:underline" aria-label="Source 1">[1]</a>}{" "}
                 </span>
               ))}
+              <Demo title="Hook text is seed copy." />
             </p>
           )}
-          {card && <p className="mt-2 text-[10px] text-dim">loaded in {loadMs}ms{card.cached ? " · cached per concept" : ""}</p>}
         </section>
 
+        {/* 3. Source */}
         {card?.resource && <Source r={card.resource} onWatch={() => { track(c.slug, "watch"); say("SYSTEM", `watched source → mastery +0.2 on ${c.slug}`, "ok"); }} />}
 
-        {card?.diagram && (
-          <section className="border-b border-line px-4 py-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h4 className="label">Flowchart</h4>
-              <span className="text-[9px] tracking-[0.1em] text-dim" title="Generated by Muse Spark as Mermaid. A sketch to orient you, not an authoritative lesson.">MUSE SPARK · NOT AUTHORITATIVE</span>
-            </div>
-            <Mermaid code={card.diagram} />
-          </section>
-        )}
-
+        {/* 4. Explain it back */}
         <ExplainBack slug={c.slug} title={c.title} />
 
-        <div className="flex gap-2 px-4 py-3">
-          <button className="btn btn-ghost flex-1" onClick={() => { track(c.slug, "skip"); say("SYSTEM", `skip ${c.slug} → interest −0.3, fog creeps back`, "warn"); dispatch({ t: "select", slug: null }); onClose?.(); }}>
+        {/* 5. Diagram (collapsed) */}
+        {card?.diagram && <Diagram code={card.diagram} title={c.title} />}
+
+        <div className="px-4 py-3">
+          <button className="btn btn-ghost w-full" onClick={() => { track(c.slug, "skip"); say("SYSTEM", `skip ${c.slug} → interest −0.3, fog creeps back`, "warn"); close(); }}>
             Not now
           </button>
         </div>
@@ -146,41 +142,83 @@ function Source({ r, onWatch }: { r: Resource; onWatch: () => void }) {
   const watch = () => {
     if (!watched.current) { watched.current = true; onWatch(); }
   };
+  const start = r.startSeconds ? `${Math.floor(r.startSeconds / 60)}:${String(r.startSeconds % 60).padStart(2, "0")}` : null;
+  const meta = (
+    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+      <span>{r.provider} · {r.kind}</span>
+      {v?.ok && <span className="text-success">✓ Verified source</span>}
+      {v && !v.ok && <span className="text-err">Link unavailable</span>}
+    </p>
+  );
   return (
     <section id="source" className="border-b border-line px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h4 className="label">Source [1]</h4>
-        {!v ? <span className="chip h-[18px]">checking…</span> : v.ok ? <span className="chip chip-ok h-[18px]">✓ verified · {v.method}</span> : <span className="chip chip-err h-[18px]">✕ dead link</span>}
-      </div>
+      <h4 className="label mb-2">Source</h4>
       {id && v?.ok !== false ? (
         playing ? (
-          <iframe
-            className="aspect-video w-full border border-line"
-            src={`https://www.youtube-nocookie.com/embed/${id}?start=${r.startSeconds ?? 0}&autoplay=1&rel=0`}
-            title={r.title}
-            allow="autoplay; encrypted-media; picture-in-picture"
-            allowFullScreen
-          />
+          <>
+            <iframe
+              className="aspect-video w-full border border-line"
+              src={`https://www.youtube-nocookie.com/embed/${id}?start=${r.startSeconds ?? 0}&autoplay=1&rel=0`}
+              title={r.title}
+              allow="autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+            />
+            <p className="mt-1.5 text-sm">{r.title}</p>
+            {meta}
+          </>
         ) : (
-          <button className="group relative block aspect-video w-full overflow-hidden border border-line bg-black" onClick={() => { setPlaying(true); watch(); }} aria-label={`Play ${r.title}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={v?.thumbnail ?? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" />
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="btn btn-primary">▶ Play{r.startSeconds ? ` from ${Math.floor(r.startSeconds / 60)}:${String(r.startSeconds % 60).padStart(2, "0")}` : ""}</span>
+          <button className="group flex w-full items-center gap-3 text-left" onClick={() => { setPlaying(true); watch(); }} aria-label={`Play ${r.title}${start ? ` from ${start}` : ""}`}>
+            <span className="relative block aspect-video w-28 shrink-0 overflow-hidden border border-line bg-black">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={v?.thumbnail ?? `https://i.ytimg.com/vi/${id}/mqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-85 group-hover:opacity-100" />
+              <span className="absolute inset-0 flex items-center justify-center"><span className="flex h-7 w-7 items-center justify-center bg-black/75 text-xs text-white">▶</span></span>
+            </span>
+            <span className="min-w-0">
+              <span className="line-clamp-2 block text-sm group-hover:underline">{r.title}</span>
+              {meta}
+              {start && <span className="block text-xs text-dim">Starts at {start}</span>}
             </span>
           </button>
         )
       ) : (
-        <a href={r.url} target="_blank" rel="noopener noreferrer" onClick={watch} className="flex items-center justify-between border border-line bg-panel-2 px-3 py-2.5 hover:border-muted">
-          <span className="font-sans text-[13px]">{r.title}</span>
-          <span className="text-[10px] text-muted">OPEN ↗</span>
+        <a href={r.url} target="_blank" rel="noopener noreferrer" onClick={watch} className="block border border-line bg-panel-2 px-3 py-2.5 hover:border-dim">
+          <span className="block text-sm">{r.title} <span className="text-muted" aria-hidden>↗</span></span>
+          {meta}
         </a>
       )}
-      <p className="mt-1.5 text-[10.5px] text-muted">
-        {r.provider} · {r.kind}
-        {r.demo && <span className="ml-1.5"><Demo title="Picked for the seed set. Production picks from 3 grounded candidates.">SEED SOURCE</Demo></span>}
-      </p>
     </section>
+  );
+}
+
+function Diagram({ code, title }: { code: string; title: string }) {
+  const [big, setBig] = useState(false);
+  return (
+    <details className="group border-b border-line">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 touch-target">
+        <span className="flex items-center gap-2">
+          <span className="text-dim transition-transform group-open:rotate-90" aria-hidden>▸</span>
+          <span className="label">Diagram</span>
+        </span>
+        <span className="text-xs text-dim">AI sketch · may simplify</span>
+      </summary>
+      <div className="px-4 pb-3">
+        <button className="block w-full border border-line bg-bg p-2 text-left hover:border-dim" onClick={() => setBig(true)} aria-label={`Expand diagram for ${title}`}>
+          <Mermaid code={code} />
+          <span className="mt-1 block text-center text-xs text-muted">Tap to expand</span>
+        </button>
+      </div>
+      {big && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-8" role="dialog" aria-modal aria-label={`Diagram: ${title}`} onClick={() => setBig(false)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setBig(false); } }}>
+          <div className="enter flex max-h-full w-full max-w-4xl flex-col border border-line-2 bg-panel" onClick={(e) => e.stopPropagation()}>
+            <header className="flex h-11 shrink-0 items-center justify-between border-b border-line pl-4 pr-1">
+              <span className="text-sm font-medium">{title} <span className="ml-2 text-xs font-normal text-dim">AI sketch · may simplify</span></span>
+              <button className="btn btn-ghost btn-icon border-transparent text-muted hover:text-text" onClick={() => setBig(false)} aria-label="Close diagram" title="Close (Esc)" autoFocus><CloseIcon /></button>
+            </header>
+            <div className="scroll min-h-0 flex-1 p-4"><Mermaid code={code} large /></div>
+          </div>
+        </div>
+      )}
+    </details>
   );
 }
 
@@ -191,7 +229,7 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
   const [typed, setTyped] = useState("");
   const [result, setResult] = useState<{ transcript: string; score: number; feedback: string; demo: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { setResult(null); setOpen(false); setErr(null); }, [slug]);
+  useEffect(() => { setResult(null); setOpen(false); setErr(null); setTyped(""); }, [slug]);
 
   const grade = async (transcript: string, demo: boolean) => {
     say("GRADE", `rubric 0–3 on "${transcript.slice(0, 40)}…"`, "info", demo);
@@ -221,42 +259,44 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
   };
 
   return (
-    <section className="border-b border-line px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h4 className="label">Explain it back</h4>
-        <span className="text-[9px] tracking-[0.12em] text-dim">OPTIONAL · NEVER A QUIZ</span>
+    <section className="border-b border-line px-4 py-3" aria-labelledby="explain-h">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 id="explain-h" className="label">Explain it back</h4>
+        <span className="text-xs text-muted">Optional · never a quiz</span>
       </div>
       {result ? (
-        <div className="enter">
-          <div className="mb-2 flex items-center gap-1" aria-label={`Score ${result.score} of 3`}>
+        <div className="enter" aria-live="polite">
+          <div className="mb-2 flex items-center gap-1" aria-label={`${result.score} of 3`}>
             {[0, 1, 2].map((i) => <BlockIcon key={i} kind={i < result.score ? "diamond" : "cobble"} slug={`s${i}`} size={22} />)}
-            <span className="pixel ml-2 text-[13px]">{result.score}/3</span>
-            {result.demo && <span className="ml-auto"><Demo title="Graded by a demo heuristic, not Muse Spark." /></span>}
+            <span className="pixel ml-2 text-sm">{result.score}/3</span>
+            <span className="ml-auto"><Demo title="Graded by a demo heuristic." /></span>
           </div>
-          <p className="font-sans text-[13px] text-text/90">{result.feedback}</p>
-          <p className="mt-2 border-l-2 border-line pl-2 font-sans text-[12px] italic text-muted">&ldquo;{result.transcript}&rdquo;</p>
+          <p className="text-sm text-text/90">{result.feedback}</p>
+          <p className="mt-2 border-l-2 border-line-2 pl-2 text-xs italic text-muted">&ldquo;{result.transcript}&rdquo;</p>
         </div>
       ) : (
         <>
-          <p className="mb-3 font-sans text-[13px] text-muted">Say what {title.toLowerCase()} is in your own words. About 20 seconds. Your map lights up as you get it.</p>
+          <p className="mb-2.5 text-sm text-muted">Say what {title.toLowerCase()} is in your own words. About 20 seconds.</p>
           <div className="flex items-center gap-2">
             <button className={`btn ${rec.state === "recording" ? "btn-primary" : ""}`} onClick={onMic} disabled={rec.state === "processing"}>
-              {rec.state === "recording" ? `■ Stop · ${Math.floor((20000 - rec.elapsed) / 1000)}s` : rec.state === "processing" ? "Grading…" : "● Explain by voice"}
+              {rec.state === "recording" ? `■ Stop · ${Math.floor((20000 - rec.elapsed) / 1000)}s` : rec.state === "processing" ? "Checking…" : "Explain by voice"}
             </button>
             {rec.state === "recording" && (
               <div className="flex h-6 flex-1 items-center gap-[2px]" aria-hidden>
-                {rec.level.map((l, i) => <span key={i} className="w-[3px] bg-signal" style={{ height: `${Math.max(8, l * 100)}%` }} />)}
+                {rec.level.map((l, i) => <span key={i} className="w-[3px] bg-text/70" style={{ height: `${Math.max(8, l * 100)}%` }} />)}
               </div>
             )}
-            {rec.state === "idle" && <button className="text-[11px] text-muted underline-offset-2 hover:underline" onClick={() => setOpen(!open)}>or type</button>}
+            {rec.state !== "recording" && rec.state !== "processing" && (
+              <button className="btn btn-ghost border-transparent text-muted hover:text-text" onClick={() => setOpen(!open)} aria-expanded={open}>or type</button>
+            )}
           </div>
           {open && (
             <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) grade(typed.trim(), true).catch((x) => setErr(x.message)); }}>
-              <input className="field" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="It's when…" maxLength={3000} />
+              <input className="field" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="It's when…" maxLength={3000} aria-label={`Explain ${title} in your own words`} autoFocus />
               <button className="btn">Send</button>
             </form>
           )}
-          {err && <p className="mt-2 text-[11px] text-err">{err}</p>}
+          {err && <p className="mt-2 text-xs text-err" role="alert">{err}</p>}
         </>
       )}
     </section>
@@ -266,40 +306,40 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
 function MapSummary() {
   const { nodes, concepts, dispatch } = useStore();
   const list = Object.values(nodes);
-  const count = (s: string) => list.filter((n) => n.state === s).length;
+  const stats = { understood: list.filter((n) => n.state === "understood").length, explored: list.filter((n) => n.state === "explored").length, seeded: list.filter((n) => n.state === "seeded").length };
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-9 shrink-0 items-center border-b border-line px-3"><h2 className="label">Inspector</h2></header>
+      <header className="flex h-10 shrink-0 items-center border-b border-line px-4"><h2 className="label">Your map</h2></header>
       <div className="scroll min-h-0 flex-1 px-4 py-4">
-        <p className="mb-4 font-sans text-[14px] leading-relaxed text-muted">Tap a block on the map to open its card. Blocks you explore grow brighter. Ones you skip fade back into fog.</p>
-        <div className="mb-5 grid grid-cols-3 border border-line">
-          {[["understood", "diamond"], ["explored", "gold"], ["seeded", "cobble"]].map(([s, k]) => (
+        <p className="mb-4 text-base text-muted">Tap a block on the map to open its card. Blocks you explore grow brighter. Ones you skip fade back into fog.</p>
+        <dl className="mb-5 grid grid-cols-3 border border-line">
+          {([["understood", "diamond"], ["explored", "gold"], ["seeded", "cobble"]] as const).map(([s, k]) => (
             <div key={s} className="flex flex-col items-center gap-1 border-r border-line py-3 last:border-r-0">
-              <BlockIcon kind={k as "diamond"} slug={s} size={22} />
-              <span className="pixel text-[18px]">{count(s)}</span>
-              <span className="text-[9.5px] uppercase tracking-[0.14em] text-muted">{s}</span>
+              <BlockIcon kind={k} slug={s} size={22} />
+              <dd className="text-xl font-semibold tabular-nums">{stats[s]}</dd>
+              <dt className="text-xs text-muted">{STATE_LABEL[s]}</dt>
             </div>
           ))}
-        </div>
+        </dl>
         <h3 className="label mb-2">Legend</h3>
-        <ul className="space-y-2 text-[11.5px]">
-          <li className="flex items-center gap-2"><BlockIcon kind="cobble" size={16} /> Seeded: on your map, not opened</li>
-          <li className="flex items-center gap-2"><BlockIcon kind="iron" size={16} /><BlockIcon kind="gold" size={16} /> Explored: iron, then gold as mastery grows</li>
-          <li className="flex items-center gap-2"><BlockIcon kind="diamond" size={16} /> Understood: diamond, torch lit</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-[3px] w-4 bg-[#b0b0b0] shadow-[0_3px_0_#6b4a2b]" /> Rail: prerequisite</li>
+        <ul className="space-y-2 text-sm text-text/90">
+          <li className="flex items-center gap-2"><BlockIcon kind="cobble" size={16} /> On your map: not opened yet</li>
+          <li className="flex items-center gap-2"><BlockIcon kind="iron" size={16} /><BlockIcon kind="gold" size={16} /> Explored: brighter as you learn</li>
+          <li className="flex items-center gap-2"><BlockIcon kind="diamond" size={16} /> Understood</li>
+          <li className="flex items-center gap-2"><span className="inline-block h-[3px] w-4 bg-[#b0b0b0] shadow-[0_3px_0_#6b4a2b]" /> Rail: learn this first</li>
           <li className="flex items-center gap-2"><span className="inline-block h-2 w-4 bg-[#8f8f8f]" /> Stone road: part of</li>
           <li className="flex items-center gap-2"><span className="inline-block h-2 w-4 bg-[#96693f]" /> Dirt path: related</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-3 w-4 bg-[#07070b] outline outline-1 outline-line" /> Fog: not yet explored, or faded</li>
-          <li className="flex items-center gap-2"><span className="text-[10px] text-dim">SIZE</span> 2×2 block = mastery ≥ 45%</li>
+          <li className="flex items-center gap-2"><span className="inline-block h-3 w-4 bg-[#07070b] outline outline-1 outline-line-2" /> Fog: not explored yet, or faded</li>
+          <li className="text-muted">Bigger blocks = deeper understanding.</li>
         </ul>
         <h3 className="label mb-2 mt-5">Recent</h3>
-        <ul className="space-y-1">
-          {list.sort((a, b) => b.lastTouched - a.lastTouched).slice(0, 10).map((n) => (
+        <ul className="space-y-0.5">
+          {[...list].sort((a, b) => b.lastTouched - a.lastTouched).slice(0, 10).map((n) => (
             <li key={n.slug}>
-              <button data-slug={n.slug} onClick={() => dispatch({ t: "select", slug: n.slug })} className="flex w-full items-center gap-2 px-1 py-0.5 text-left text-[11.5px] hover:bg-panel-2">
-                <NodeIcon state={n.state} mastery={n.mastery} slug={n.slug} size={14} />
+              <button data-slug={n.slug} onClick={() => dispatch({ t: "select", slug: n.slug })} className="flex min-h-9 w-full items-center gap-2 px-1 text-left text-sm hover:bg-panel-2">
+                <NodeIcon state={n.state} mastery={n.mastery} slug={n.slug} size={16} />
                 <span className="truncate">{concepts[n.slug]?.title ?? n.slug}</span>
-                <span className="ml-auto text-[10px] text-dim">{blockKindFor(n.state, n.mastery)}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted">{STATE_LABEL[n.state]}</span>
               </button>
             </li>
           ))}

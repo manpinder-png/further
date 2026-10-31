@@ -142,9 +142,30 @@ What changed after looking at real screenshots of the running app (headless Chro
 9. **Hydration mismatches** on Connectors (`window.location` in render) and the Ops countdown (`Date.now()` in render). Both moved to after mount.
 10. **Mobile top bar overflowed.** Shortened "Demo mode" to "Demo" under `sm`, tightened gaps, and allowed the map to fit at a lower zoom.
 
+## 6b. Learner pass (production UI)
+
+The hackathon UI showed builder tooling to everyone. This pass makes the default view a clean learner product and moves the tooling behind one flag. No API routes, schema, scoring or agent logic changed.
+
+| # | Decision | Why |
+|---|---|---|
+| D21 | One flag, `NEXT_PUBLIC_BUILDER_VIEW` (default off), gates status pills, agent log, per-item DEMO/SEED badges, scoring math, Ops and the MCP console. `/ops` and `/connectors` 404 without it | Learners need none of it; builders keep all of it. Inlined at build time, so it's dead code in a learner build |
+| D22 | One dismissible "You're exploring with sample data." banner replaces per-item badges | Still honest about fixtures (repo rule), without badge noise on every surface |
+| D23 | Nav is Map · Session · Profile. Session is disabled with a tooltip until a match is pending or active | An empty Session tab is a dead end |
+| D24 | Agent log → **Activity**: max 5 plain-language lines with relative time, derived from the event log (+ a `note` for matches). Bursts of "added" collapse into one line | Shows what happened to *you*, not what the pipeline did |
+| D25 | Map labels: sans 12px on a solid dark plate; shown for selected, its neighbours, understood, hover/focus, blocks added in the last 6s, or zoom ≥ 3.2×. Placement tries above/below/right/left and skips if all collide with a label, another block, or the screen edge. Avatars draw under labels | Fixes known overlaps ("Matrix multiplication"/"Tensor cores", "Memory bandwidth"/"AI accelerators") and reduces clutter |
+| D26 | Keyboard model for the canvas: a transparent focusable button over each block (Tab, arrows to nearest block in that direction, Enter opens, Esc closes) | Canvas content was mouse-only. Supersedes D20's workaround |
+| D27 | Inspector order: title + state → hook → source → explain it back → diagram (collapsed, tap to expand to a modal). Source is a compact thumbnail row | Explain it back sits at y≈413–547 on a 1440×900 viewport, no scrolling |
+| D28 | Client map is persisted to localStorage; every count reads `useMapStats()` | Profile showed 9 concepts / 0 quests after a full reload while the map showed 16. Both now read one selector over one persisted event log |
+| D29 | Colour roles as tokens: accent (CTA, selection, active tab only), success (online, safety-checked, understood badge), mastery (cyan: understood blocks, mastery bar), err (errors only), neutrals for the rest. `--muted` #a3a3ab and `--dim` #85858d are ≥ 4.5:1 on every panel | One meaning per colour; old dim grey was 2.5:1 |
+| D30 | Type roles: pixel font only for game moments (logo, "Day N", explain-back result); mono for small section labels; sans for everything else. Scale `text-2xs`…`text-3xl` (11–34px), nothing below 11px | Readability; mono in paragraphs was tiring |
+| D31 | Breakpoints: ≥1280 three columns; 768–1279 map + 360px inspector, rail in a drawer from the header; <768 full-screen map, inspector bottom sheet, session chat-first with Today's swap / Safety tabs. Touch targets ≥ 44px on phones and coarse pointers | Header never wraps at 390px |
+| D32 | `prefers-reduced-motion`: no particles, bounce, flicker or camera easing on the map; replay steps a day at a time; match ring stays full while the number counts down | Motion is decoration here, never information |
+| D33 | MCP client config shows `<origin>/mcp` (a rewrite to `/api/mcp`); token masked as `fur_••••3a9c` with Reveal/Copy | Friendlier URL; secrets hidden by default |
+
 ## 7. Known gaps (UI side)
 
-- The canvas map has no keyboard focus model. The Recent list is the accessible path; a full list view would be better.
+- The revealed demo MCP token is literally `fur_demo_7f3a9c`. Real per-user tokens (Connor) fix this.
+- Regenerate token is disabled ("Coming soon") until the token endpoint exists.
 - Pinch-to-zoom isn't implemented; mobile uses the +/− buttons and drag.
 - The demo session peer is scripted. In the live demo, Amit's phone replaces it through Supabase Broadcast.
 - Explain-back and curiosity voice clips are recorded for real, but transcribed by a canned demo response until `META_API_KEY` is set.

@@ -15,7 +15,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-With no keys, every AI and realtime system runs in **demo mode**: labeled demo data, no network calls to Meta, no charges. The top bar shows each system's status (green live, orange demo). Copy `.env.example` to `.env.local` and add keys to switch systems to live one at a time.
+With no keys, every AI and realtime system runs in **demo mode**: sample data, no network calls to Meta, no charges. Learners see one "You're exploring with sample data" banner on the map. Set `NEXT_PUBLIC_BUILDER_VIEW=true` in `.env.local` for the builder view: status pills (green live, orange demo), the agent log, per-item DEMO/SEED badges, `/ops` and `/connectors` (both 404 without the flag). Copy `.env.example` to `.env.local` and add keys to switch systems to live one at a time.
 
 ```bash
 npm run typecheck
@@ -87,4 +87,4 @@ Each system has a typed seam. Fill in the live branch; the UI doesn't change.
 
 ## Honesty rules
 
-Demo data is always labeled `DEMO` / `SEED` in the UI. Seed explorers are never presented as real people, and demo grades, transcripts and facilitator turns are never presented as live model output.
+Sample data is flagged to learners by the map banner, and per item (`DEMO` / `SEED`) in the builder view. Seed explorers are never presented as real people, and demo grades, transcripts and facilitator turns are never presented as live model output.

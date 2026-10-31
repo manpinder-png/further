@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { transcribeBlob, useExpand, useRecorder } from "@/lib/client/hooks";
 import { useStore } from "@/lib/client/store";
+import { BUILDER_VIEW } from "@/lib/builder";
 
 const EXAMPLES = ["why does training AI need special chips?", "how do chatbots remember things?", "what makes a model smaller?"];
 
@@ -57,18 +58,19 @@ export default function CommandBar() {
           <button
             onClick={mic}
             disabled={rec.state === "processing"}
-            aria-label={recording ? "Stop recording" : "Speak your curiosity"}
-            className={`relative flex h-12 w-12 shrink-0 items-center justify-center border transition-colors ${recording ? "border-signal bg-signal text-bg" : "border-signal/60 bg-signal-dim text-signal hover:bg-signal hover:text-bg"}`}
+            aria-label={recording ? "Stop recording" : "Ask by voice"}
+            title={recording ? "Stop recording" : "Ask by voice"}
+            className={`relative flex h-12 w-12 shrink-0 items-center justify-center border transition-colors ${recording ? "border-accent bg-accent text-bg" : "border-accent bg-accent text-bg hover:bg-accent-hover"}`}
           >
-            {recording && <span className="absolute inset-0 animate-ping border border-signal" />}
-            {rec.state === "processing" ? <span className="cursor-blink text-[11px]">…</span> : recording ? <span className="h-3.5 w-3.5 bg-bg" /> : <MicIcon />}
+            {recording && <span className="absolute inset-0 animate-ping border border-accent" />}
+            {rec.state === "processing" ? <span className="cursor-blink text-xs">…</span> : recording ? <span className="h-3.5 w-3.5 bg-bg" /> : <MicIcon />}
           </button>
-          <form className="relative flex h-12 min-w-0 flex-1 items-center border border-line-2 bg-bg focus-within:border-signal" onSubmit={(e) => { e.preventDefault(); submit(text); }}>
-            <span className="pl-3 text-signal">›</span>
+          <form className="relative flex h-12 min-w-0 flex-1 items-center border border-line-2 bg-bg focus-within:border-dim" onSubmit={(e) => { e.preventDefault(); submit(text); }}>
+            <span className="pl-3 text-dim" aria-hidden>›</span>
             {recording ? (
               <div className="flex h-full flex-1 items-center gap-[3px] px-3" aria-live="polite">
-                <span className="mr-2 text-[10.5px] tracking-[0.14em] text-signal">LISTENING {(rec.elapsed / 1000).toFixed(1)}s</span>
-                {rec.level.map((l, i) => <span key={i} className="w-[3px] bg-signal transition-[height]" style={{ height: `${Math.max(6, l * 80)}%` }} />)}
+                <span className="mr-2 text-xs text-text">Listening {(rec.elapsed / 1000).toFixed(1)}s</span>
+                {rec.level.map((l, i) => <span key={i} className="w-[3px] bg-text/70 transition-[height]" style={{ height: `${Math.max(6, l * 80)}%` }} />)}
               </div>
             ) : (
               <input
@@ -77,23 +79,23 @@ export default function CommandBar() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder={busy ? "Growing your map…" : "What are you curious about?  (press / )"}
                 maxLength={500}
-                className="h-full min-w-0 flex-1 bg-transparent px-2 font-sans text-[15px] outline-none placeholder:text-dim"
-                aria-label="Curiosity"
+                className="h-full min-w-0 flex-1 bg-transparent px-2 text-md outline-none placeholder:text-dim"
+                aria-label="What are you curious about?"
               />
             )}
-            {busy && <span className="mr-3 text-[10px] tracking-[0.14em] text-signal">● EXPANDING</span>}
-            {!recording && <button className="mr-1.5 hidden h-9 px-3 text-[11px] tracking-[0.12em] text-muted hover:text-text sm:block" disabled={busy}>ENTER ↵</button>}
+            {busy && <span className="mr-3 shrink-0 text-xs text-muted" aria-live="polite">Adding…</span>}
+            {!recording && <button className="mr-1.5 hidden h-9 px-3 text-xs text-muted hover:text-text sm:block" disabled={busy} aria-label="Send">Enter ↵</button>}
           </form>
-          <button className="btn hidden h-12 sm:flex" onClick={() => setLens(true)} title="Curiosity Lens (stretch): point your camera at something, SAM 3.1 segments it, tap to add">
-            <LensIcon /> Lens
+          <button className="btn hidden h-12 sm:flex" onClick={() => setLens(true)} title="Curiosity Lens: point your camera at something to ask about it" aria-label="Curiosity Lens: ask about something with your camera">
+            <LensIcon /> <span aria-hidden>Lens</span>
           </button>
         </div>
-        <div className="mx-auto mt-2 flex max-w-4xl items-center gap-2 overflow-x-auto text-[11px]">
-          {err ? <span className="text-err">{err}</span> : (
+        <div className="mx-auto mt-2 flex max-w-4xl items-center gap-2 overflow-x-auto text-xs">
+          {err ? <span className="text-err" role="alert">{err}</span> : (
             <>
-              <span className="shrink-0 text-dim">TRY</span>
+              <span className="shrink-0 text-dim">Try</span>
               {EXAMPLES.map((e) => (
-                <button key={e} onClick={() => submit(e)} disabled={busy} className="shrink-0 border border-line px-2 py-0.5 font-sans text-muted hover:border-muted hover:text-text">{e}</button>
+                <button key={e} onClick={() => submit(e)} disabled={busy} className="touch-target shrink-0 border border-line px-2 py-1 text-muted hover:border-dim hover:text-text">{e}</button>
               ))}
             </>
           )}
@@ -118,19 +120,19 @@ function LensModal({ onClose }: { onClose: () => void }) {
       <div className="enter w-full max-w-md border border-line bg-panel" onClick={(e) => e.stopPropagation()}>
         <header className="flex h-9 items-center justify-between border-b border-line px-3">
           <h2 className="label">Curiosity lens</h2>
-          <span className="chip chip-demo">Stretch · SAM 3.1</span>
+          {BUILDER_VIEW && <span className="chip chip-demo">Stretch · SAM 3.1</span>}
         </header>
         <div className="relative aspect-[4/3] bg-black">
-          {denied ? <p className="p-6 text-[12px] text-muted">Camera unavailable.</p> : <video ref={video} autoPlay playsInline muted className="h-full w-full object-cover" />}
-          <div className="pointer-events-none absolute inset-6 border border-dashed border-signal/60" />
+          {denied ? <p className="p-6 text-sm text-muted">Camera unavailable.</p> : <video ref={video} autoPlay playsInline muted className="h-full w-full object-cover" />}
+          <div className="pointer-events-none absolute inset-6 border border-dashed border-white/50" />
         </div>
-        <div className="space-y-2 p-3 font-sans text-[13px] text-muted">
-          <p>Point at a circuit board. SAM 3.1 segments it, you tap the chip, and it becomes a node.</p>
-          <p className="font-mono text-[10.5px] text-dim">HOOK: POST /api/lens {"{ image }"} → SAM 3.1 masks → Muse Spark labels → /api/expand. Owner: Amit (only after Monday freeze).</p>
+        <div className="space-y-2 p-3 text-sm text-muted">
+          <p>Point at something you&apos;re curious about, like a circuit board. Tap a part of it and it joins your map.</p>
+          {BUILDER_VIEW && <p className="font-mono text-2xs text-dim">HOOK: POST /api/lens {"{ image }"} → SAM 3.1 masks → Muse Spark labels → /api/expand. Owner: Amit (only after Monday freeze).</p>}
         </div>
         <div className="flex justify-end gap-2 border-t border-line p-3">
           <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn btn-primary" disabled title="Not built yet (stretch)">Segment</button>
+          <button className="btn btn-primary" disabled title="Coming soon">Add to map · soon</button>
         </div>
       </div>
     </div>

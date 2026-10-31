@@ -1,6 +1,7 @@
 "use client";
-// Mission control: the screen the 3-minute demo runs on (plan §2).
-// Beats 1–5 all happen here without navigating: bloom, explore, time-lapse, match, MCP.
+// The map screen (plan §2). Bloom, explore, time-lapse, match and off-app captures all land here.
+// Layout: ≥1280 three columns · 768–1279 map + 360px inspector, rail in a drawer ·
+// <768 full-screen map, inspector as a bottom sheet, rail in a drawer.
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useStore } from "@/lib/client/store";
@@ -11,39 +12,63 @@ import Inspector from "@/components/mission/Inspector";
 import CommandBar from "@/components/mission/CommandBar";
 import MatchModal from "@/components/mission/MatchModal";
 import TimeLapse, { type TL } from "@/components/mission/TimeLapse";
+import { CloseIcon } from "@/components/ui/bits";
 
 const WorldMap = dynamic(() => import("@/components/map/WorldMap"), { ssr: false });
+const BANNER_KEY = "further:sample-banner-dismissed";
 
-export default function MissionControl() {
-  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey } = useStore();
+export default function MapScreen() {
+  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey, rail } = useStore();
   const { run } = useExpand();
   const runMatch = useMatchJob();
   const [tl, setTl] = useState<TL>({ on: false, t: 0, playing: false });
-  const [sheet, setSheet] = useState<"none" | "log">("none");
 
-  // E8: captures from an MCP client land on the open map.
+  // E8: captures from a connected app land on the open map.
   useInbox((text, source) => {
     say("MCP", `add_curiosity("${text}") from ${source} client`, "ok");
     run(text, "mcp");
   });
 
-  // Auto-run the match job after a mission or a good explain-back (production: every 15s server-side).
+  // Auto-run the match job after a quest or a good explain-back in this tab (production: server job every 15s).
   const tries = useRef(0);
   const doneCount = missions.filter((m) => m.status === "done").length;
   const explains = events.filter((e) => e.kind === "explain" && e.id >= 10_000).length;
+  const baseline = useRef<{ done: number; explains: number } | null>(null);
   useEffect(() => {
-    if (!ready || match || tries.current >= 3 || (doneCount === 0 && explains === 0)) return;
-    const t = setTimeout(() => { tries.current++; runMatch({ quietIfNone: true }); }, explains ? 2500 : 9000);
+    if (!ready) return;
+    baseline.current ??= { done: doneCount, explains };
+    const b = baseline.current;
+    const newExplains = explains - b.explains;
+    if (match || tries.current >= 3 || (doneCount === b.done && newExplains <= 0)) return;
+    const t = setTimeout(() => { tries.current++; runMatch({ quietIfNone: true }); }, newExplains > 0 ? 2500 : 9000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doneCount, explains, ready]);
 
-  // Esc closes the inspector
+  // Esc closes the inspector, then the drawer.
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && dispatch({ t: "select", slug: null });
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (selected) dispatch({ t: "select", slug: null });
+      else if (rail) dispatch({ t: "rail", open: false });
+    };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [dispatch]);
+  }, [dispatch, selected, rail]);
+
+  // Close the drawer when leaving the map.
+  useEffect(() => () => dispatch({ t: "rail", open: false }), [dispatch]);
+
+  // One sample-data banner instead of per-item badges.
+  const [bannerOff, setBannerOff] = useState(true);
+  useEffect(() => {
+    try { setBannerOff(localStorage.getItem(BANNER_KEY) === "1"); } catch { setBannerOff(false); }
+  }, []);
+  const sample = explorers.some((e) => e.demo);
+  const dismissBanner = () => {
+    setBannerOff(true);
+    try { localStorage.setItem(BANNER_KEY, "1"); } catch { /* ignore */ }
+  };
 
   const start = events[0]?.at ?? Date.now();
   const end = Date.now();
@@ -52,12 +77,12 @@ export default function MissionControl() {
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      <div className="relative grid min-h-0 flex-1 lg:grid-cols-[320px_minmax(0,1fr)_380px]">
-        <aside className="hidden min-h-0 border-r border-line bg-panel lg:block">
+      <div className="relative grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[300px_minmax(0,1fr)_380px]">
+        <aside className="hidden min-h-0 border-r border-line bg-panel xl:block" aria-label="Quests and activity">
           <LeftRail />
         </aside>
 
-        <section className="relative min-h-0 bg-black" aria-label="World map">
+        <section className="relative min-h-0 bg-black" aria-label="Your map">
           {ready && (
             <WorldMap
               concepts={conceptList}
@@ -71,30 +96,40 @@ export default function MissionControl() {
               holdCamera={tl.on}
             />
           )}
-          <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2">
-            <span className="label !text-text/80 [text-shadow:1px_1px_0_#000]">World · ai-tech</span>
-            <span className="text-[10px] text-muted [text-shadow:1px_1px_0_#000]">{Object.keys(shownNodes).length} concepts</span>
+          <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
+            {ready && sample && !bannerOff && (
+              <div role="status" className="pointer-events-auto flex max-w-full items-center gap-3 border border-line-2 bg-panel/95 py-1 pl-3 pr-1 text-sm shadow-lg backdrop-blur">
+                <span>You&apos;re exploring with sample data.</span>
+                <button className="btn btn-ghost btn-icon min-h-8 border-transparent text-muted hover:text-text" onClick={dismissBanner} aria-label="Dismiss" title="Dismiss">
+                  <CloseIcon size={12} />
+                </button>
+              </div>
+            )}
+            {!tl.on && <span className="bg-black/70 px-2 py-0.5 text-sm font-medium text-text">AI &amp; Tech</span>}
           </div>
-          <button className="btn absolute right-3 top-3 h-8 bg-panel/90 lg:hidden" onClick={() => setSheet(sheet === "log" ? "none" : "log")}>
-            {sheet === "log" ? "Close" : "Log"}
-          </button>
           <TimeLapse start={start} end={end} tl={tl} setTl={setTl} />
           <MatchModal />
         </section>
 
-        <aside className="hidden min-h-0 border-l border-line bg-panel lg:block">
+        <aside className="hidden min-h-0 border-l border-line bg-panel md:block" aria-label="Concept details">
           <Inspector />
         </aside>
 
-        {/* Mobile sheets (N2) */}
-        {sheet === "log" && (
-          <div className="enter absolute inset-x-0 bottom-0 z-30 h-[70%] border-t border-line bg-panel lg:hidden">
-            <LeftRail />
+        {/* Drawer: left rail below 1280px */}
+        {rail && (
+          <div className="absolute inset-0 z-40 xl:hidden">
+            <button className="absolute inset-0 bg-black/50" aria-label="Close quests and activity" tabIndex={-1} onClick={() => dispatch({ t: "rail", open: false })} />
+            <aside id="left-rail" className="enter-left absolute inset-y-0 left-0 w-[min(320px,88vw)] border-r border-line bg-panel shadow-2xl" aria-label="Quests and activity">
+              <LeftRail />
+            </aside>
           </div>
         )}
+
+        {/* Bottom sheet: inspector below 768px */}
         {selected && (
-          <div className="enter absolute inset-x-0 bottom-0 z-30 h-[78%] border-t border-signal bg-panel lg:hidden">
-            <Inspector />
+          <div className="enter absolute inset-x-0 bottom-0 z-30 h-[78%] border-t border-line-2 bg-panel shadow-[0_-12px_40px_rgba(0,0,0,.6)] flex flex-col md:hidden" role="dialog" aria-label="Concept details">
+            <div className="mx-auto mt-1.5 h-1 w-10 shrink-0 bg-line-2" aria-hidden />
+            <div className="min-h-0 flex-1"><Inspector /></div>
           </div>
         )}
       </div>
