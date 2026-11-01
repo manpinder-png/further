@@ -8,7 +8,7 @@ export interface TL { on: boolean; t: number; playing: boolean }
 export const TL_MS = 10_000;
 const DAY = 86_400_000;
 
-export default function TimeLapse({ start, end, tl, setTl }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void }) {
+export default function TimeLapse({ start, end, tl, setTl, counts }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void; counts?: string }) {
   const raf = useRef(0);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -50,6 +50,7 @@ export default function TimeLapse({ start, end, tl, setTl }: { start: number; en
       <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-center" aria-live="polite">
         <div className="display text-3xl text-white [text-shadow:3px_3px_0_#000]">Day {day}</div>
         <div className="mt-1.5 bg-black/60 px-2 py-0.5 text-sm text-text">{new Date(tl.t).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
+        {counts && <div className="mt-1 text-sm tabular-nums text-mastery">{counts}</div>}
       </div>
       <div className="absolute inset-x-3 bottom-3 flex items-center gap-3 border border-line-2 bg-panel/95 px-3 py-2 backdrop-blur md:right-16">
         <button className="btn btn-ghost btn-icon shrink-0 border-transparent" onClick={() => setTl((p) => ({ ...p, playing: !p.playing, t: p.t >= end ? start : p.t }))} aria-label={tl.playing ? "Pause replay" : "Play replay"} title={tl.playing ? "Pause" : "Play"}>

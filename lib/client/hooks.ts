@@ -6,12 +6,14 @@ import { placeNear } from "../layout";
 import { CATALOG } from "../demo/seed";
 import { HANDSHAKE_MS, MATCH_THRESHOLD } from "../matching";
 import { liveInterest } from "../math";
+import { learnerModel } from "../learn";
+import { liveConfigured, liveFetch, persistConcept } from "./live";
 
 let missionId = Date.now(); // unique across reloads (missions are persisted)
 
 /** F2: stream /api/expand and grow the map node by node. */
 export function useExpand() {
-  const { dispatch, say, track, concepts, nodes } = useStore();
+  const { dispatch, say, track, concepts, nodes, events } = useStore();
   const live = useRef({ concepts, nodes });
   live.current = { concepts, nodes };
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,7 @@ export function useExpand() {
         const res = await fetch("/api/expand", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes) }),
+          body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary }),
         });
         const demo = res.headers.get("x-further-mode") === "demo";
         if (!res.ok || !res.body) {
@@ -63,8 +65,18 @@ export function useExpand() {
                 alias[line.slug] = target;
                 say("CANONICALIZE", `"${line.title}" ≈ ${target} (cos ${line.canonical.similarity.toFixed(2)} ≥ 0.88) → reuse`, "ok", demo);
                 const parent = cs[line.edge.from];
-                if (parent && cs[target]) dispatch({ t: "edge", e: { src: line.edge.from, dst: target, kind: line.edge.kind } });
+                if (!cs[target]) {
+                  // Reuse assumed the concept was already on the map. Add it (catalog data when known) or it's lost.
+                  const known = CATALOG[target];
+                  const pos = placeNear(target, parent?.x !== undefined ? { x: parent.x, y: parent.y! } : undefined, Object.values(cs));
+                  const c = { ...(known ?? {}), slug: target, title: known?.title ?? line.title, hook: known?.hook ?? line.hook, domain: "ai-tech", ...pos };
+                  dispatch({ t: "concept", c, edge: parent ? { src: line.edge.from, dst: target, kind: line.edge.kind } : undefined });
+                  added++;
+                } else if (parent) {
+                  dispatch({ t: "edge", e: { src: line.edge.from, dst: target, kind: line.edge.kind } });
+                }
                 if (!ns[target]) { track(target, "seed"); slugs.push(target); }
+                dispatch({ t: "missionPatch", id, patch: { added, reused, slugs: [...slugs] } });
                 continue;
               }
               const existing = cs[line.slug];
@@ -75,6 +87,10 @@ export function useExpand() {
               live.current = { concepts: { ...cs, [c.slug]: c }, nodes: { ...ns, [c.slug]: { slug: c.slug, interest: 0.5, mastery: 0, state: "seeded", lastTouched: Date.now() } } };
               dispatch({ t: "concept", c, edge: line.edge.from !== line.slug ? { src: line.edge.from, dst: line.slug, kind: line.edge.kind } : undefined });
               track(line.slug, "seed");
+              if (liveConfigured() && !demo) {
+                persistConcept({ slug: c.slug, title: c.title, hook: c.hook, domain: "ai-tech" }, line.edge.from !== line.slug ? line.edge : undefined)
+                  .catch(() => say("SYSTEM", `Couldn't persist ${c.title}; kept it on this device.`, "warn"));
+              }
               added++;
               slugs.push(line.slug);
               say("CANONICALIZE", `"${line.title}" new concept (no neighbour ≥ 0.88)`, "info", demo);
@@ -90,12 +106,12 @@ export function useExpand() {
         dispatch({ t: "missionPatch", id, patch: { status: "done", added, reused, slugs: [...slugs] } });
       } catch (e) {
         say("EXPAND", (e as Error).message, "err");
-        dispatch({ t: "missionPatch", id, patch: { status: "error" } });
+        dispatch({ t: "missionPatch", id, patch: { status: "error", error: (e as Error).message } });
       } finally {
         setBusy(false);
       }
     },
-    [dispatch, say, track],
+    [dispatch, say, track, events],
   );
   return { run, busy };
 }
@@ -112,13 +128,25 @@ export function useRecorder(maxMs = 20_000) {
   const start = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4"; // Safari → mp4
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4"; // used only to receive a stop event
       const mr = new MediaRecorder(stream, { mimeType: mime });
       const chunks: BlobPart[] = [];
       const ac = new AudioContext();
       const an = ac.createAnalyser();
       an.fftSize = 64;
-      ac.createMediaStreamSource(stream).connect(an);
+      const source = ac.createMediaStreamSource(stream);
+      source.connect(an);
+      // Meta's upload endpoint accepts mono 16-bit PCM WAV at 16/24kHz, not a
+      // browser WebM/MP4 container. Capture PCM alongside the UI meter and
+      // encode a small 24kHz WAV when the push-to-talk recording stops.
+      const pcm: Float32Array[] = [];
+      const processor = ac.createScriptProcessor(4096, 1, 1);
+      const silent = ac.createGain();
+      silent.gain.value = 0;
+      processor.onaudioprocess = (event) => pcm.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      source.connect(processor);
+      processor.connect(silent);
+      silent.connect(ac.destination);
       const buf = new Uint8Array(an.frequencyBinCount);
       const t0 = Date.now();
       let raf = 0;
@@ -133,9 +161,14 @@ export function useRecorder(maxMs = 20_000) {
       mr.onstop = () => {
         cancelAnimationFrame(raf);
         stream.getTracks().forEach((t) => t.stop());
+        processor.disconnect();
+        silent.disconnect();
         ac.close();
         setLevel(Array(24).fill(0));
-        resolver.current?.(new Blob(chunks, { type: mime }));
+        // Keep MediaRecorder's chunks consumed (Safari otherwise may not fire
+        // dataavailable reliably), but upload the API-compatible WAV bytes.
+        void chunks;
+        resolver.current?.(encodeWav(resample(pcm, ac.sampleRate, 24_000), 24_000));
       };
       mr.start();
       rec.current = mr;
@@ -154,6 +187,34 @@ export function useRecorder(maxMs = 20_000) {
   }, []);
 
   return { state, setState, level, elapsed, start, stop };
+}
+
+function resample(chunks: Float32Array[], from: number, to: number) {
+  const total = chunks.reduce((n, part) => n + part.length, 0);
+  const input = new Float32Array(total);
+  let offset = 0;
+  for (const part of chunks) { input.set(part, offset); offset += part.length; }
+  if (from === to || !input.length) return input;
+  const length = Math.max(1, Math.round(input.length * to / from));
+  const output = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const at = i * from / to;
+    const lo = Math.floor(at), hi = Math.min(lo + 1, input.length - 1), mix = at - lo;
+    output[i] = input[lo] * (1 - mix) + input[hi] * mix;
+  }
+  return output;
+}
+
+function encodeWav(samples: Float32Array, sampleRate: number) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const ascii = (at: number, text: string) => { for (let i = 0; i < text.length; i++) view.setUint8(at + i, text.charCodeAt(i)); };
+  ascii(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); ascii(8, "WAVE");
+  ascii(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  ascii(36, "data"); view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 export async function transcribeBlob(blob: Blob, purpose: "curiosity" | "explain") {
@@ -204,11 +265,22 @@ export function useMatchJob() {
         language: profile.language,
       };
       say("MATCH", `scoring pairs · me=[${me.activeConcepts.join(", ")}]`);
-      const r = await fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ me, edges }) });
+      const r = liveConfigured()
+        ? await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ me, edges }) })
+        : await fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ me, edges }) });
       const d = await r.json();
+      if (!r.ok) {
+        say("MATCH", d.error ?? "Match service unavailable", "err");
+        return null;
+      }
       type Row = { peer: MatchRequest["peer"]; score: number; overlap: number; complementarity: number; recency: number; teach?: { from: "a" | "b"; slug: string; near: string }; filteredBy?: string };
       for (const row of d.ranked as Row[])
-        say("MATCH", `${row.peer.name}${row.peer.demo ? " (seed)" : ""}: ${row.filteredBy ? `filtered · ${row.filteredBy}` : `${row.score.toFixed(2)} = .5×${row.overlap.toFixed(2)} + .3×${row.complementarity} + .2×${row.recency}`}`, "info", true);
+        say("MATCH", `${row.peer.name}${row.peer.demo ? " (seed)" : ""}: ${row.filteredBy ? `filtered · ${row.filteredBy}` : `${row.score.toFixed(2)} = .5×${row.overlap.toFixed(2)} + .3×${row.complementarity} + .2×${row.recency}`}`, "info", d.demo);
+      if (!d.demo && d.match) {
+        say("MATCH", `match_request → ${d.match.peer.name} (${d.match.score.toFixed(2)} ≥ ${MATCH_THRESHOLD})`, "ok");
+        dispatch({ t: "match", m: d.match as MatchRequest });
+        return d.match as MatchRequest;
+      }
       // Cool-down: don't re-offer someone you just had a session with (24h).
       const met = new Set(sessions.filter((x) => now - x.at < 86_400_000).map((x) => x.peer));
       for (const row of d.ranked as Row[]) if (met.has(row.peer.name) && !row.filteredBy) { row.filteredBy = "met in last 24h"; row.score = 0; say("MATCH", `${row.peer.name}: skipped · met in last 24h`, "info"); }

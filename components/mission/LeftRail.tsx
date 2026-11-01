@@ -8,6 +8,8 @@ import { CloseIcon, Head, LevelRing, NodeIcon, useNow } from "@/components/ui/bi
 import { CATALOG } from "@/lib/demo/seed";
 import { personName, plural, relTime } from "@/lib/client/format";
 import { replay } from "@/lib/math";
+import { learnerModel } from "@/lib/learn";
+import { useMatchJob } from "@/lib/client/hooks";
 import { BUILDER_VIEW } from "@/lib/builder";
 import AgentLog from "@/components/builder/AgentLog";
 
@@ -132,6 +134,9 @@ function Section({ id, label, open, onToggle, right, children }: { id: SectionId
 function Progress() {
   const stats = useMapStats();
   const { events, nodes } = useStore();
+  const model = useMemo(() => learnerModel(nodes, events), [nodes, events]);
+  const STYLE: Record<string, string> = { "visual-first": "Visual first", "explain-back": "By explaining it back", "read-first": "Reading first", balanced: "A mix of everything" };
+  const PACE: Record<string, string> = { "short-bursts": "short bursts", "deep-dives": "deep dives", steady: "a steady pace" };
   const week = useMemo(() => {
     const then = replay(events, Date.now() - 7 * 86_400_000);
     const was = Object.values(then).filter((n) => n.state === "understood").length;
@@ -158,7 +163,10 @@ function Progress() {
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-3 text-xs text-muted">
+        How you learn: <span className="text-text">{STYLE[model.style]}, {PACE[model.pace]}</span>
+      </p>
+      <p className="mt-1 text-xs text-muted">
         This week: <span className="text-text">{plural(Math.max(0, week.understood), "topic")} understood</span>, {plural(Math.max(0, week.topics), "new topic")}
       </p>
     </div>
@@ -297,6 +305,13 @@ function People() {
     return [...m.values()].sort((a, b) => b.at - a.at);
   }, [sessions]);
   const color = (name: string) => explorers.find((e) => e.name === name)?.color ?? "#85858d";
+  const runMatch = useMatchJob();
+  const [looking, setLooking] = useState<"idle" | "looking" | "none">("idle");
+  const find = async () => {
+    setLooking("looking");
+    const m = await runMatch({ quietIfNone: true });
+    setLooking(m ? "idle" : "none");
+  };
   return (
     <div className="space-y-3">
       <div>
@@ -319,6 +334,8 @@ function People() {
         )}
       </div>
       <div>
+        <button className="btn mb-2 w-full" onClick={find} disabled={looking === "looking"}>{looking === "looking" ? "Looking…" : "Find someone to learn with"}</button>
+        {looking === "none" && <p className="mb-2 text-xs text-muted">No one a step ahead right now. Try again after you learn something new.</p>}
         <h4 className="mb-1 text-xs text-muted">Learning now</h4>
         <ul>
           {explorers.map((e) => {

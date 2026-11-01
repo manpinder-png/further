@@ -3,7 +3,8 @@
 import { ExpandRequest, ModelIntentLine, ModelNodeLine } from "@/lib/schemas";
 import { canonicalize, cosine, demoEmbed, toSlug } from "@/lib/canonicalize";
 import { CATALOG, DEMO_EXPANSION, NEAR } from "@/lib/demo/seed";
-import { EXPAND_SYSTEM, hasMeta, streamLines } from "@/lib/server/meta";
+import { chat, EXPAND_SYSTEM, hasMeta, streamLines } from "@/lib/server/meta";
+import { parseModelPayload } from "@/lib/parse-expansion";
 import { checkRate } from "@/lib/server/ratelimit";
 import { captureError } from "@/lib/server/observability";
 import type { ExpansionLine } from "@/lib/types";
@@ -17,8 +18,13 @@ export async function POST(req: Request) {
   const rate = checkRate("demo-user"); // TODO(Connor): real user id from Supabase Auth
   if (!rate.ok) return Response.json({ error: "Rate limit: 30 expansions per hour." }, { status: 429 });
 
-  const { text, mapSummary } = parsed.data;
-  const existing = mapSummary.map((s) => ({ slug: s, title: CATALOG[s]?.title ?? s.replace(/-/g, " ") }));
+  const { text, mapSummary, learnerSummary } = parsed.data;
+  // Canonicalize against the GLOBAL concept graph (plan §5.1), not just the
+  // caller's map — otherwise two users mint "GPUs" and "graphics processors"
+  // as separate concepts and cross-user matching breaks.
+  const globalGraph = Object.values(CATALOG).map((c) => ({ slug: c.slug, title: c.title }));
+  const existing = [...globalGraph];
+  for (const s of mapSummary) if (!existing.some((e) => e.slug === s)) existing.push({ slug: s, title: CATALOG[s]?.title ?? s.replace(/-/g, " ") });
   const t0 = Date.now();
   const enc = new TextEncoder();
 
@@ -35,26 +41,59 @@ export async function POST(req: Request) {
       try {
         if (hasMeta()) {
           let gotIntent = false;
-          for await (const line of streamLines([
-            { role: "system", content: EXPAND_SYSTEM },
-            { role: "user", content: `Curiosity: ${text}\nExisting map: ${mapSummary.join(", ") || "(empty)"}` },
-          ])) {
-            let obj: unknown;
-            try { obj = JSON.parse(line); } catch { continue; } // invalid lines are dropped
-            if (!gotIntent) {
-              const i = ModelIntentLine.safeParse(obj);
-              if (i.success) { gotIntent = true; send({ type: "intent", ...i.data }); continue; }
+          const messages = [
+            { role: "system" as const, content: EXPAND_SYSTEM },
+            { role: "user" as const, content: `Curiosity: ${text}\nExisting map: ${mapSummary.join(", ") || "(empty)"}\nHow this learner learns: ${learnerSummary || "new learner"}. Build future nodes from their strengths, refresh what is fading instead of repeating it, and pitch depth to their pace.` },
+          ];
+          let lastSlug = "";
+          const consume = (line: string) => {
+            // Models wrap output (fences, arrays, {concepts:[...]}); parse
+            // every shape instead of dropping all of it (0 new steps bug).
+            for (const rawObj of parseModelPayload(line)) {
+              if (!gotIntent) {
+                const i = ModelIntentLine.safeParse(rawObj);
+                if (i.success) { gotIntent = true; lastSlug = i.data.root; send({ type: "intent", ...i.data }); continue; }
+              }
+              // Muse invents edge kinds ("builds_on", "capstone", from:null).
+              // Normalize to the plan's three kinds instead of dropping nodes.
+              const obj = rawObj as Record<string, unknown>;
+              const edge = (obj.edge ?? {}) as Record<string, unknown>;
+              const kindMap: Record<string, string> = { prerequisite: "prerequisite", builds_on: "prerequisite", depends_on: "prerequisite", related: "related", start: "related", applies: "related", extends: "related", part_of: "part_of", capstone: "part_of", contains: "part_of" };
+              const normalized = {
+                ...obj,
+                edge: {
+                  from: typeof edge.from === "string" && edge.from ? edge.from : lastSlug || obj.slug,
+                  kind: kindMap[String(edge.kind ?? "related")] ?? "related",
+                },
+              };
+              const n = ModelNodeLine.safeParse(normalized);
+              if (n.success) { lastSlug = n.data.slug; emitNode(n.data); }
             }
-            const n = ModelNodeLine.safeParse(obj);
-            if (n.success) emitNode(n.data);
+          };
+          try {
+            for await (const line of streamLines(messages)) consume(line);
+          } catch (streamErr) {
+            captureError(streamErr, { route: "expand-stream" });
           }
+          // Streaming is not reliable for every model/deployment. If it gave
+          // us nothing, ask once more without streaming before failing.
+          if (count === 0) {
+            const raw = await chat(messages, { maxTokens: 4096 });
+            for (const line of raw.split(/\r?\n/)) consume(line);
+            if (count === 0) for (const obj of parseModelPayload(raw)) {
+              const n = ModelNodeLine.safeParse(obj);
+              if (n.success) emitNode(n.data);
+            }
+          }
+          if (!gotIntent) send({ type: "intent", intent: `Explore: ${text.slice(0, 80)}`, root: existing[0]?.slug ?? "concept" });
+          if (count === 0) throw new Error("Muse returned no usable concepts (tried streaming and non-streaming)");
         } else {
           await demoExpand(text, mapSummary, send, emitNode);
         }
         send({ type: "done", count, ms: Date.now() - t0 });
       } catch (err) {
         captureError(err, { route: "expand" });
-        send({ type: "error", message: "The map agent hit an error. Try again." });
+        send({ type: "error", message: err instanceof Error ? err.message : "The map agent hit an error. Try again." });
       }
       ctrl.close();
     },

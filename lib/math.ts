@@ -74,7 +74,7 @@ export function replay(events: FEvent[], until = Infinity): Record<string, UserN
 }
 
 /** Rendering rules. */
-export const opacityFor = (interest: number) => 0.25 + 0.75 * clamp(interest);
+export const opacityFor = (interest: number) => 0.18 + 0.82 * clamp(interest);
 
 /** Current interest after decay, for display. */
 export function liveInterest(n: UserNode, now = Date.now()) {

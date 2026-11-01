@@ -32,6 +32,14 @@ export const CATALOG: Record<string, Concept> = Object.fromEntries(
       ["data-parallelism", "Data parallelism", "Copy the model, split the data, average what you learn.", 0, 0],
       ["chip-fabrication", "Chip fabrication", "Printing billions of switches with light.", 0, 0],
       ["power-cooling", "Power & cooling", "A training cluster draws as much power as a small town.", 0, 0],
+      ["tokens", "Tokens", "The chunks of text a model actually reads and writes.", 0, 0],
+      ["context-window", "Context window", "How much a model can hold in mind at once.", 0, 0],
+      ["large-language-models", "Large language models", "Models trained to predict the next token, at enormous scale.", 0, 0],
+      ["fine-tuning", "Fine-tuning", "Taking a general model and teaching it one job well.", 0, 0],
+      ["retrieval-augmented-generation", "Retrieval (RAG)", "Looking facts up before answering, instead of guessing.", 0, 0],
+      ["inference", "Inference", "The cheap, fast part: asking a trained model a question.", 0, 0],
+      ["model-distillation", "Distillation", "Training a small model to imitate a big one.", 0, 0],
+      ["datasets", "Training data", "The text, code and images a model learns from.", 0, 0],
     ] as const
   ).map(([slug, title, hook, x, y]) => [
     slug,
@@ -52,6 +60,14 @@ export const CATALOG_EDGES: Edge[] = [
   { src: "training-vs-inference", dst: "floating-point", kind: "related" },
   { src: "floating-point", dst: "quantization", kind: "prerequisite" },
   { src: "neural-networks", dst: "moores-law", kind: "related" },
+  { src: "transformers", dst: "tokens", kind: "part_of" },
+  { src: "attention", dst: "context-window", kind: "related" },
+  { src: "transformers", dst: "large-language-models", kind: "part_of" },
+  { src: "large-language-models", dst: "fine-tuning", kind: "related" },
+  { src: "embeddings", dst: "retrieval-augmented-generation", kind: "related" },
+  { src: "training-vs-inference", dst: "inference", kind: "part_of" },
+  { src: "quantization", dst: "model-distillation", kind: "related" },
+  { src: "neural-networks", dst: "datasets", kind: "prerequisite" },
 ];
 
 /** Demo-only: which on-map concept a catalog concept attaches to when it arrives alone. */
@@ -95,7 +111,7 @@ export const RESOURCES: Record<string, Resource> = {
   "parallel-computing": { slug: "parallel-computing", url: "https://en.wikipedia.org/wiki/Parallel_computing", kind: "article", title: "Parallel computing", provider: "Wikipedia", demo: true },
   cuda: { slug: "cuda", url: "https://en.wikipedia.org/wiki/CUDA", kind: "article", title: "CUDA", provider: "Wikipedia", demo: true },
   "memory-bandwidth": { slug: "memory-bandwidth", url: "https://en.wikipedia.org/wiki/Memory_bandwidth", kind: "article", title: "Memory bandwidth", provider: "Wikipedia", demo: true },
-  "tensor-cores": { slug: "tensor-cores", url: "https://en.wikipedia.org/wiki/Tensor_Processing_Unit", kind: "article", title: "Tensor Processing Unit", provider: "Wikipedia", demo: true },
+  "tensor-cores": { slug: "tensor-cores", url: "https://en.wikipedia.org/wiki/Tensor_core", kind: "article", title: "Tensor core", provider: "Wikipedia", demo: true },
   hbm: { slug: "hbm", url: "https://en.wikipedia.org/wiki/High_Bandwidth_Memory", kind: "article", title: "High Bandwidth Memory", provider: "Wikipedia", demo: true },
   "ai-accelerators": { slug: "ai-accelerators", url: "https://en.wikipedia.org/wiki/AI_accelerator", kind: "article", title: "AI accelerator", provider: "Wikipedia", demo: true },
   "floating-point": { slug: "floating-point", url: "https://en.wikipedia.org/wiki/Bfloat16_floating-point_format", kind: "article", title: "bfloat16 floating-point format", provider: "Wikipedia", demo: true },
@@ -184,6 +200,10 @@ export function seedExplorers(now: number): Explorer[] {
     { id: "seed-kofi", name: "Kofi", demo: true, activeConcepts: ["quantization", "floating-point"], mastery: { quantization: 0.75 }, openToMatch: true, language: "en", lastActive: now - 7 * min, color: "#3ddc84" },
     { id: "seed-lena", name: "Lena", demo: true, activeConcepts: ["tpu", "systolic-arrays", "matrix-multiplication"], mastery: { "systolic-arrays": 0.7 }, openToMatch: false, language: "en", lastActive: now - 2 * min, color: "#f5c542" },
     { id: "seed-yuki", name: "Yuki", demo: true, activeConcepts: ["chip-fabrication", "moores-law"], mastery: { "chip-fabrication": 0.65 }, openToMatch: true, language: "ja", lastActive: now - 12 * min, color: "#ff5d73" },
+    { id: "seed-mira", name: "Mira", demo: true, activeConcepts: ["tokens", "context-window", "attention"], mastery: { tokens: 0.7, "context-window": 0.45 }, openToMatch: true, language: "en", lastActive: now - 3 * min, color: "#ffb86b" },
+    { id: "seed-tomas", name: "Tomas", demo: true, activeConcepts: ["fine-tuning", "datasets", "large-language-models"], mastery: { "fine-tuning": 0.6 }, openToMatch: true, language: "en", lastActive: now - 5 * min, color: "#7ee0d2" },
+    { id: "seed-priya", name: "Priya", demo: true, activeConcepts: ["retrieval-augmented-generation", "embeddings"], mastery: { embeddings: 0.72 }, openToMatch: true, language: "en", lastActive: now - 6 * min, color: "#f28ba8" },
+    { id: "seed-sam", name: "Sam", demo: true, activeConcepts: ["inference", "model-distillation", "quantization"], mastery: { inference: 0.55 }, openToMatch: false, language: "en", lastActive: now - 9 * min, color: "#9db2ff" },
   ];
 }
 

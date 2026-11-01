@@ -4,6 +4,7 @@ import { z } from "zod";
 import { moderate } from "@/lib/server/moderation";
 import { chat, FACILITATOR_SYSTEM, hasMeta } from "@/lib/server/meta";
 import { captureError } from "@/lib/server/observability";
+import { adminRest, hasSupabase, requireSupabaseUser } from "@/lib/server/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const p = Body.safeParse(await req.json().catch(() => null));
   if (!p.success || id.length > 64) return Response.json({ error: "Invalid message" }, { status: 400 });
+  // A configured durable room must never silently substitute the rehearsal
+  // script for a claimed live facilitator.
+  if (hasSupabase() && /^[0-9a-f-]{36}$/i.test(id) && req.headers.get("authorization") && !hasMeta())
+    return Response.json({ error: "Muse Spark is not configured for the live facilitator." }, { status: 503 });
   const { text, turn, ctx: c, history } = p.data;
   try {
     const verdict = await moderate(text);
     if (!verdict.safe) return Response.json({ delivered: false, verdict });
-    // TODO(Amit): supabase.channel(`session:${id}`).send({ type: "broadcast", event: "msg", payload })
     let facilitator: string | null = null;
     let demo = true;
     if (hasMeta()) {
@@ -42,9 +46,41 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await new Promise((r) => setTimeout(r, 700));
       facilitator = SCRIPT[Math.min(turn, SCRIPT.length - 1)](c);
     }
+    if (hasSupabase() && /^[0-9a-f-]{36}$/i.test(id) && req.headers.get("authorization")) {
+      const user = await requireSupabaseUser(req);
+      const members = await (await adminRest(`session_participants?session_id=eq.${id}&user_id=eq.${user.id}&select=user_id&limit=1`)).json() as Array<{ user_id: string }>;
+      if (!members[0]) return Response.json({ error: "Not a session participant" }, { status: 403 });
+      await adminRest("session_messages", {
+        method: "POST",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({ session_id: id, author_id: user.id, kind: "human", body: text, guard: verdict }),
+      });
+      if (facilitator) await adminRest("session_messages", {
+        method: "POST",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({ session_id: id, author_id: null, kind: "facilitator", body: facilitator, guard: null }),
+      });
+      return Response.json({ delivered: true, verdict, facilitator, done: false, demo: false });
+    }
     return Response.json({ delivered: true, verdict, facilitator, done: turn >= SCRIPT.length - 1, demo });
   } catch (err) {
     captureError(err, { route: "session/message", id });
     return Response.json({ error: "Moderation unavailable, message held." }, { status: 503 });
+  }
+}
+
+/** Polling read side for the MVP. This uses the same durable message table a
+ * Supabase Broadcast listener will mirror, so no transcript is lost on reload. */
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!hasSupabase() || !/^[0-9a-f-]{36}$/i.test(id)) return Response.json({ error: "Live session unavailable" }, { status: 503 });
+  try {
+    const user = await requireSupabaseUser(req);
+    const members = await (await adminRest(`session_participants?session_id=eq.${id}&user_id=eq.${user.id}&select=user_id&limit=1`)).json() as Array<{ user_id: string }>;
+    if (!members[0]) return Response.json({ error: "Not a session participant" }, { status: 403 });
+    const rows = await (await adminRest(`session_messages?session_id=eq.${id}&select=id,author_id,kind,body,guard,created_at&order=created_at.asc`)).json() as Array<{ id: number; author_id: string | null; kind: "human" | "facilitator"; body: string; guard: { safe: boolean; engine: string; ms: number; category?: string } | null; created_at: string }>;
+    return Response.json({ messages: rows.map((m) => ({ id: m.id, who: m.kind === "facilitator" ? "facilitator" : m.author_id === user.id ? "me" : "peer", text: m.body, guard: m.guard ?? undefined, at: m.created_at })) });
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : "Could not load messages" }, { status: 401 });
   }
 }

@@ -142,6 +142,16 @@ What changed after looking at real screenshots of the running app (headless Chro
 9. **Hydration mismatches** on Connectors (`window.location` in render) and the Ops countdown (`Date.now()` in render). Both moved to after mount.
 10. **Mobile top bar overflowed.** Shortened "Demo mode" to "Demo" under `sm`, tightened gaps, and allowed the map to fit at a lower zoom.
 
+## 6a. MD-conformance pass (Oct 31, Connor)
+
+Pixel-map items here (labels, gold, `IRON → GOLD` pulses) were superseded by the knowledge map in §6c; the return hooks and replay counters carried over.
+
+- Canonicalization now runs against the global concept graph in `/api/expand`, not only the caller's map (§5.1), and the alias-before-plural-stripping bug is fixed with regression tests in `tests/`.
+- Map reward legibility: seeded labels stay hidden until hover/select, labels are priority-capped and hidden on collision, terrain is quieted, gold arrives at mastery ≥0.2, and block upgrades fire a burst + floating `IRON → GOLD` / `TORCH LIT` pulse.
+- Time-lapse carries a story caption and live counters (`N concepts · M understood`); the inspector freezes during replay; interest decay ticks every 30s.
+- Return hooks (on-plan, no streaks/points): "Fog is creeping back" resume card in the inspector and a `Continue: {frontier}` chip in the command bar.
+- AI-domain backbone grew by 8 concepts (tokens, context window, LLMs, fine-tuning, RAG, inference, distillation, datasets) with edges; tensor-cores seed link corrected; 4 more labeled seed explorers.
+
 ## 6b. Learner pass (production UI)
 
 The hackathon UI showed builder tooling to everyone. This pass makes the default view a clean learner product and moves the tooling behind one flag. No API routes, schema, scoring or agent logic changed.
@@ -164,7 +174,7 @@ The hackathon UI showed builder tooling to everyone. This pass makes the default
 
 ## 6c. Knowledge map iteration (Nov 1, `feature/siri-ui/iteration-nov1`)
 
-The pixel world was fun but hard to read: the map was a picture, not a diagram. This pass keeps the game feel and the fog/dim/lit states, drops the Minecraft theme, and makes the map a readable flowchart that visibly learns from you. Connor's `feature/connor-live-backend` was used as a reference (its learner model in `lib/learn.ts`), not merged.
+The pixel world was fun but hard to read: the map was a picture, not a diagram. This pass keeps the game feel and the fog/dim/lit states, drops the Minecraft theme, and makes the map a readable flowchart that visibly learns from you. Connor's `feature/connor-live-backend` was first used as a reference (its learner model in `lib/learn.ts`); it was merged afterwards, see §6d.
 
 | # | Decision | Why |
 |---|---|---|
@@ -174,6 +184,22 @@ The pixel world was fun but hard to read: the map was a picture, not a diagram. 
 | D37 | **Living motion and narration.** When the graph changes, cards glide to their new place: learning pulls a topic inward, fading pushes it out; new topics grow out of their parent. Unlock bursts when a topic is learned, a level-up moment for the overall level, and short captions that say what changed and why ("Attention is understood. It moved closer to you.") | Makes the graph feel alive rather than a static chart. All motion is skipped with `prefers-reduced-motion`; captions are `aria-live` |
 | D38 | **Collapsible "Your journey" pane**: Progress (level, XP, counts, this week), Your path, Quests (with "N of M explored" progress), Activity, Connections (learned with, learning now), Sessions. Collapses to a 56px icon strip (default below 1280px, remembered); a drawer on phones. Sections are individually collapsible | One place for everything about your progress, without stealing map width when you don't need it |
 | D39 | Overall level = √(XP / 40) + 1, where XP = Σ mastery × 100 + 50 per understood topic | Small, frequent level-ups early; never shown as a grade |
+
+## 6d. Live backend merged into the knowledge map (Nov 1)
+
+Connor's `feature/connor-live-backend` is now merged into this branch. His backend (routes, Supabase, Muse Spark prompts, tests) came in unchanged; his learning UI was rebuilt inside the knowledge map, the journey pane and the concept panel. His D21–D23 are renumbered D40–D42 here.
+
+| # | Decision | Why | Trade-off |
+|---|---|---|---|
+| D40 | Live state uses anonymous Supabase Auth plus server-verified API routes | A learner can try Further immediately, yet all persisted writes have a real `auth.uid()` and RLS boundary | Anonymous sign-in must be enabled in the Supabase project; otherwise the app deliberately stays in demo mode |
+| D41 | Grounded cards use Meta Responses API and fail closed without URL citations | Web search grounding is Responses-only and search is optional; a key alone must not make an uncited card look real | A citation-less answer falls back to labeled seed content instead of appearing as a live card |
+| D42 | Match/session sync uses durable Postgres plus short polling before Broadcast | The two-phone demo works without adding a client dependency; Supabase Broadcast can replace polling later | Polling is less immediate than Presence/Broadcast and remains visible as a demo-status transport |
+| D43 | **Lessons live in the concept panel.** Opening a topic shows "Learn": a lesson Muse writes for how you learn (format chosen from your learner model), with a reveal or a challenge, "That landed", "Teach it differently" and "Go deeper". Order: title → hook → Learn → source → explain it back → diagram | The panel is where you learn a topic; the cited source becomes "go deeper", as in Connor's design | Explain it back moves below the fold |
+| D44 | **Branches grow the map.** When a lesson lands, its suggested branches run an expansion; new topics grow out on the map and the first one opens | Different learning paths are visible as the graph grows, not a separate list | Each branch is a model call |
+| D45 | **Return hooks**: "Pick up where you left off" in the panel and a "Continue:" chip in the input bar, both from Your path. Empty map: "Start here" presets that send exactly what they say | Connor's cold-start and resume ideas, one source of truth with the pane | — |
+| D46 | **Data source**: with Supabase configured, the map loads from Postgres (anonymous auth) and every event is written back; without it, or if sign-in fails, the saved/sample map is used and the sample-data banner shows | Real users get real data; demos still work offline | Connor's branch started empty when not live; we kept the sample map for rehearsals |
+| D47 | Learner copy never names the model: "Learn", "Picked for how you learn", "Couldn't write this lesson yet". Demo/model details stay builder-only | Repo rule (AGENTS.md) | — |
+| D48 | Connor's 4-lesson `Course` component was not carried over (its `/api/course` route stays). One lesson at a time with "Go deeper" covers it in the panel | One learning surface, not two | Re-add if we want a full-course view |
 
 ## 7. Known gaps (UI side)
 

@@ -8,6 +8,7 @@ import { useMapStats, useStore } from "@/lib/client/store";
 import { Demo, NodeIcon } from "@/components/ui/bits";
 import { STATE_LABEL } from "@/lib/client/format";
 import { BUILDER_VIEW } from "@/lib/builder";
+import { liveConfigured, persistProfile } from "@/lib/client/live";
 
 // TODO(Connor): fetch the user's token from the server; production tokens are random per user, stored hashed.
 const TOKEN = "fur_demo_7f3a9c";
@@ -17,7 +18,10 @@ export default function ProfilePage() {
   const { profile, dispatch, nodes, concepts } = useStore();
   const stats = useMapStats();
   const list = Object.values(nodes);
-  const set = (p: Partial<typeof profile>) => dispatch({ t: "profile", p });
+  const set = (p: Partial<typeof profile>) => {
+    dispatch({ t: "profile", p });
+    if (liveConfigured()) void persistProfile({ ...profile, ...p }).catch(() => undefined);
+  };
 
   return (
     <div className="scroll grid-bg h-full">

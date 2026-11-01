@@ -61,16 +61,28 @@ export interface CanonicalHit {
   similarity: number;
 }
 
+const light = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export function canonicalize(
   title: string,
   existing: { slug: string; title: string }[],
 ): CanonicalHit | null {
-  const n = norm(title);
+  // Alias lookup must run before plural stripping: norm() turns
+  // "graphics processing unit" into "graphic processing unit", which
+  // would never match the alias table.
+  const raw = light(title);
   for (const [alias, target] of Object.entries(ALIASES)) {
-    if (n === alias || n.includes(alias)) {
+    if (raw === alias || raw.includes(alias)) {
       if (existing.some((e) => e.slug === target)) return { slug: target, similarity: 0.94 };
     }
   }
+  const n = norm(title);
+  void n;
   const q = demoEmbed(title);
   let best: CanonicalHit | null = null;
   for (const e of existing) {

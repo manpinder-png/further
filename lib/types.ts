@@ -76,6 +76,7 @@ export interface MatchRequest {
   score: number;
   expiresAt: number;
   status: "pending" | "accepted" | "declined" | "expired" | "waiting";
+  sessionId?: string;
 }
 
 export interface Profile {

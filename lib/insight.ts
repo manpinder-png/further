@@ -5,7 +5,7 @@
 // TODO(Connor): in live mode, send learnerSummary() to /api/course and let Muse Spark
 // pick suggestions and write the reasons. These heuristics are the demo stand-in.
 import type { Concept, Edge, EdgeKind, FEvent, UserNode } from "./types";
-import { CATALOG, NEAR, RESOURCES } from "./demo/seed";
+import { CATALOG, CATALOG_EDGES, NEAR, RESOURCES } from "./demo/seed";
 import { liveInterest } from "./math";
 
 /* ---------- Level and XP ---------- */
@@ -42,6 +42,8 @@ export interface Suggestion {
 
 /** Where each catalog topic attaches. Demo stand-in for the model's graph. */
 const LINKS: Record<string, { from: string; kind: EdgeKind }> = {
+  // Connor's AI backbone: catalog edges into topics not on the starting map.
+  ...Object.fromEntries(CATALOG_EDGES.filter((e) => CATALOG[e.dst]?.x === undefined).map((e) => [e.dst, { from: e.src, kind: e.kind }])),
   ...NEAR,
   "ai-accelerators": { from: "training-vs-inference", kind: "related" },
   "matrix-multiplication": { from: "neural-networks", kind: "part_of" },

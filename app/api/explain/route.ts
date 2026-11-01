@@ -13,8 +13,10 @@ export async function POST(req: Request) {
   const title = CATALOG[slug]?.title ?? slug;
   try {
     if (hasMeta()) {
-      const raw = await chat([{ role: "system", content: GRADE_SYSTEM }, { role: "user", content: `Concept: ${title}\nExplanation: ${transcript}` }], { json: true, maxTokens: 120 });
-      const r = ExplainResult.parse(JSON.parse(raw));
+      const raw = await chat([{ role: "system", content: GRADE_SYSTEM }, { role: "user", content: `Concept: ${title}\nExplanation: ${transcript}` }], { json: true, maxTokens: 1500 });
+      const s = raw.indexOf("{"), e2 = raw.lastIndexOf("}");
+      if (s < 0 || e2 <= s) throw new Error("Grader returned no JSON");
+      const r = ExplainResult.parse(JSON.parse(raw.slice(s, e2 + 1)));
       return Response.json({ ...r, demo: false });
     }
     // DEMO heuristic: length + mechanism words. Clearly labeled in the UI.

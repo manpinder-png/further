@@ -163,7 +163,7 @@ export default function MapScreen() {
               <div className="display text-3xl">Level {levelUp}</div>
             </div>
           )}
-          <TimeLapse start={start} end={end} tl={tl} setTl={setTl} />
+          <TimeLapse start={start} end={end} tl={tl} setTl={setTl} counts={tl.on ? `${Object.keys(shownNodes).length} topics · ${Object.values(shownNodes).filter((n) => n.state === "understood").length} understood` : undefined} />
           <MatchModal />
         </section>
 

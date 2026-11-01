@@ -2,8 +2,9 @@
 // Inspector: the concept card (plan §5.3, E3). One short, real, cited source, checked live;
 // diagrams marked as a sketch; explain-back opt-in. Order: title → hook → source → explain → diagram.
 import { useEffect, useRef, useState } from "react";
-import { useStore, useSuggestions } from "@/lib/client/store";
-import { transcribeBlob, useRecorder } from "@/lib/client/hooks";
+import { usePath, useStore, useSuggestions } from "@/lib/client/store";
+import { transcribeBlob, useExpand, useRecorder } from "@/lib/client/hooks";
+import Teach from "@/components/learn/Teach";
 import { liveInterest } from "@/lib/math";
 import { CloseIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
 import Mermaid from "@/components/ui/Mermaid";
@@ -35,7 +36,7 @@ export function StateBadge({ state }: { state: NodeState }) {
 }
 
 export default function Inspector({ onClose }: { onClose?: () => void }) {
-  const { selected, concepts, nodes, track, say, dispatch } = useStore();
+  const { selected, concepts, nodes, track, say, dispatch, missions } = useStore();
   const suggestions = useSuggestions();
   const [card, setCard] = useState<Card | null>(null);
   const c = selected ? concepts[selected] : null;
@@ -60,6 +61,18 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
       say("CARD", `${selected}: ${d.cached ? "cache hit" : "generated"} in ${ms}ms${d.cached ? " (target < 500ms)" : ""}`, d.cached ? "ok" : "info", d.demo);
     });
   }, [selected, say]);
+
+  // Branch (Connor): grow a new path from a lesson, then open its first new topic.
+  const { run } = useExpand();
+  const missionsRef = useRef(missions);
+  missionsRef.current = missions;
+  const branch = async (t: string) => {
+    await run(t, "text");
+    setTimeout(() => {
+      const first = missionsRef.current[0]?.slugs?.[0];
+      if (first) dispatch({ t: "select", slug: first });
+    }, 50);
+  };
 
   const sugg = selected && !c ? suggestions.find((s) => s.slug === selected) : undefined;
   if (sugg) return <SuggestionCard s={sugg} />;
@@ -111,13 +124,16 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
           )}
         </section>
 
-        {/* 3. Source */}
+        {/* 3. Learn: a lesson written for how you learn; branches grow new paths on the map */}
+        <Teach key={c.slug} slug={c.slug} title={c.title} onBranch={branch} />
+
+        {/* 4. Source: go deeper */}
         {card?.resource && <Source r={card.resource} onWatch={() => { track(c.slug, "watch"); say("SYSTEM", `watched source → mastery +0.2 on ${c.slug}`, "ok"); }} />}
 
-        {/* 4. Explain it back */}
+        {/* 5. Explain it back */}
         <ExplainBack slug={c.slug} title={c.title} />
 
-        {/* 5. Diagram (collapsed) */}
+        {/* 6. Diagram (collapsed) */}
         {card?.diagram && <Diagram code={card.diagram} title={c.title} />}
 
         <div className="px-4 py-3">
@@ -309,8 +325,27 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
   );
 }
 
+/** Cold start (Connor): you don't need the right question. Presets send exactly what they say. */
+const STARTS = ["Learn AI from zero", "Why AI needs special chips", "How chatbots work"];
+function StartHere() {
+  const { run, busy } = useExpand();
+  return (
+    <div className="mb-5">
+      <h3 className="label mb-2">Start here</h3>
+      <div className="grid gap-1.5">
+        {STARTS.map((t) => (
+          <button key={t} disabled={busy} onClick={() => run(t, "text")} className="rounded-md border border-line bg-panel-2 px-3 py-2.5 text-left text-sm hover:border-dim disabled:opacity-50">
+            {t} <span aria-hidden>→</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MapSummary() {
   const { nodes, concepts, dispatch } = useStore();
+  const next = usePath()[0];
   const list = Object.values(nodes);
   const stats = { understood: list.filter((n) => n.state === "understood").length, explored: list.filter((n) => n.state === "explored").length, seeded: list.filter((n) => n.state === "seeded").length };
   return (
@@ -318,6 +353,13 @@ function MapSummary() {
       <header className="flex h-10 shrink-0 items-center border-b border-line px-4"><h2 className="label">Your map</h2></header>
       <div className="scroll min-h-0 flex-1 px-4 py-4">
         <p className="mb-4 text-base text-muted">Tap a topic on the map to open its card. Topics you learn light up and move closer to you. Ones you skip drift back into the fog.</p>
+        {next ? (
+          <button onClick={() => dispatch({ t: "select", slug: next.slug })} className="mb-5 block w-full rounded-md border border-[#1b4a4d] bg-mastery-soft/60 px-3 py-2.5 text-left hover:border-mastery">
+            <span className="block text-2xs uppercase tracking-[0.12em] text-mastery">Pick up where you left off</span>
+            <span className="mt-0.5 block text-md font-medium">{next.title} <span aria-hidden>→</span></span>
+            <span className="block text-xs text-muted">{next.reason}</span>
+          </button>
+        ) : list.length === 0 ? <StartHere /> : null}
         <dl className="mb-5 grid grid-cols-3 overflow-hidden rounded-md border border-line">
           {(["understood", "explored", "seeded"] as const).map((s) => (
             <div key={s} className="flex flex-col items-center gap-1 border-r border-line py-3 last:border-r-0">

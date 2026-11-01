@@ -2,13 +2,15 @@
 // F1: voice-first curiosity capture. Text is the fallback, never a second-class path.
 import { useEffect, useRef, useState } from "react";
 import { transcribeBlob, useExpand, useRecorder } from "@/lib/client/hooks";
-import { useStore } from "@/lib/client/store";
+import { usePath, useStore } from "@/lib/client/store";
 import { BUILDER_VIEW } from "@/lib/builder";
 
 const EXAMPLES = ["why does training AI need special chips?", "how do chatbots remember things?", "what makes a model smaller?"];
 
 export default function CommandBar() {
-  const { say } = useStore();
+  const { say, dispatch } = useStore();
+  // Return hook (Connor): pick up where you left off. Same source as "Your path".
+  const next = usePath()[0];
   const { run, busy } = useExpand();
   const rec = useRecorder(15_000);
   const [text, setText] = useState("");
@@ -93,6 +95,11 @@ export default function CommandBar() {
         <div className="mx-auto mt-2 flex max-w-4xl items-center gap-2 overflow-x-auto text-xs">
           {err ? <span className="text-err" role="alert">{err}</span> : (
             <>
+              {next && (
+                <button onClick={() => dispatch({ t: "select", slug: next.slug })} className="touch-target shrink-0 rounded-full border border-[#1b4a4d] px-2.5 py-1 text-mastery hover:bg-mastery-soft" title={next.reason}>
+                  Continue: {next.title}
+                </button>
+              )}
               <span className="shrink-0 text-dim">Try</span>
               {EXAMPLES.map((e) => (
                 <button key={e} onClick={() => submit(e)} disabled={busy} className="touch-target shrink-0 border border-line px-2 py-1 text-muted hover:border-dim hover:text-text">{e}</button>

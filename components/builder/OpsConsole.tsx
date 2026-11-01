@@ -10,6 +10,7 @@ const DEADLINE = Date.parse("2026-11-05T02:00:00Z"); // 9:00 PM ET (official)
 
 const ST: Record<Status, { label: string; cls: string }> = {
   live: { label: "Live", cls: "chip-success" },
+  wired: { label: "Wired", cls: "chip-accent" },
   ui: { label: "UI + demo", cls: "chip-accent" },
   stub: { label: "Stub", cls: "chip-demo" },
   todo: { label: "To do", cls: "" },
