@@ -75,10 +75,6 @@ export function replay(events: FEvent[], until = Infinity): Record<string, UserN
 
 /** Rendering rules. */
 export const opacityFor = (interest: number) => 0.25 + 0.75 * clamp(interest);
-/** Block size in tiles: 1 → 2 as mastery grows. */
-export const sizeFor = (mastery: number) => (mastery >= 0.45 ? 2 : 1);
-/** Fog-of-war reveal radius in tiles. */
-export const revealFor = (n: UserNode) => 2 + n.interest * 3 + n.mastery * 2;
 
 /** Current interest after decay, for display. */
 export function liveInterest(n: UserNode, now = Date.now()) {

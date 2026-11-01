@@ -13,7 +13,7 @@ export interface Concept {
   domain: string;
   difficulty?: number;
   coverUrl?: string; // Muse Image tile, cached per concept
-  /** Tile position on the world map. Assigned by lib/layout.ts on the client. */
+  /** Legacy grid position (lib/layout.ts). The knowledge map computes its own layout. */
   x?: number;
   y?: number;
 }
@@ -63,7 +63,7 @@ export interface Explorer {
   openToMatch: boolean;
   language: string;
   lastActive: number;
-  color: string; // player-head colour
+  color: string; // avatar colour
 }
 
 export interface MatchRequest {

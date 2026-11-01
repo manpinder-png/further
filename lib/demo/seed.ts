@@ -1,7 +1,6 @@
 // DEMO DATA. Everything here is labeled DEMO in the UI.
 // Owner for real content: Manpinder (seed concepts, 30 seed explorers, eval set).
-import type { Concept, Edge, Explorer, FEvent, Profile, Resource, UserNode } from "../types";
-import { replay } from "../math";
+import type { Concept, Edge, Explorer, FEvent, Profile, Resource } from "../types";
 
 export const DOMAIN = "ai-tech";
 
@@ -174,10 +173,6 @@ export function seedEvents(now: number): FEvent[] {
     ev(6.3, "training-vs-inference", "dwell"),
     ev(6.8, "attention", "watch"),
   ];
-}
-
-export function seedNodes(events: FEvent[]): Record<string, UserNode> {
-  return replay(events);
 }
 
 /** Seed explorers. ALWAYS labeled as seed/demo in the UI (plan §9). */

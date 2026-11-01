@@ -2,9 +2,9 @@
 
 *Your feed knows what keeps you scrolling. Further knows what you're trying to understand.*
 
-Say what you're curious about, even vaguely. A concept map grows from that sentence, one block at a time. Every block has one short, real, cited source. Blocks you explore turn from cobblestone to iron, gold and diamond; ones you skip fade back into fog. When someone nearby on the map is a step ahead on a neighbouring concept, you can both accept a short AI-facilitated session where each of you teaches the piece you know.
+Say what you're curious about, even vaguely. A knowledge map grows from that sentence, with you at the centre. Every topic has one short, real, cited source. Topics you learn light up and move closer to you; ones you skip drift back into the fog. The map learns how you learn and suggests what to explore next. When someone nearby on the map is a step ahead on a neighbouring concept, you can both accept a short AI-facilitated session where each of you teaches the piece you know.
 
-![Map after a voice curiosity](docs/screenshots/01-bloom.jpg)
+![Knowledge map](docs/screenshots/map-1440.png)
 
 ## Run it
 

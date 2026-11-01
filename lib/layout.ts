@@ -1,5 +1,5 @@
-// Tile placement for new concepts. Plan §3 suggested a force layout; on a tile
-// world we instead search rings around the parent and snap to the grid (DESIGN D2).
+// Legacy grid placement for new concepts (x/y on Concept). The knowledge map lays
+// itself out in lib/graph-layout.ts; these coordinates are kept for the backend.
 import type { Concept } from "./types";
 
 export const WORLD_W = 64;
