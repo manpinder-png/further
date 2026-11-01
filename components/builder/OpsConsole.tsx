@@ -41,11 +41,11 @@ export default function OpsConsole() {
           </div>
           <div className="bg-panel p-4">
             <div className="text-[10px] tracking-[0.14em] text-muted">T− OUR TARGET · WED 6PM ET</div>
-            <div className="pixel mt-1 text-[26px] tabular-nums text-accent">{t.d}D {pad(t.h)}:{pad(t.m)}:{pad(t.s)}</div>
+            <div className="display mt-1 text-[26px] tabular-nums text-accent">{t.d}D {pad(t.h)}:{pad(t.m)}:{pad(t.s)}</div>
           </div>
           <div className="bg-panel p-4">
             <div className="text-[10px] tracking-[0.14em] text-muted">T− OFFICIAL · WED 9PM ET</div>
-            <div className="pixel mt-1 text-[26px] tabular-nums">{dl.d}D {pad(dl.h)}:{pad(dl.m)}:{pad(dl.s)}</div>
+            <div className="display mt-1 text-[26px] tabular-nums">{dl.d}D {pad(dl.h)}:{pad(dl.m)}:{pad(dl.s)}</div>
           </div>
         </section>
 

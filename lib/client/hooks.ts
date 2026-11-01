@@ -24,6 +24,7 @@ export function useExpand() {
       setBusy(true);
       say("EXPAND", `Muse Spark ← "${text.slice(0, 60)}" (stream: true)`);
       let added = 0, reused = 0, first = true;
+      const slugs: string[] = [];
       const alias: Record<string, string> = {}; // model slug → reused canonical slug
       try {
         const res = await fetch("/api/expand", {
@@ -63,7 +64,7 @@ export function useExpand() {
                 say("CANONICALIZE", `"${line.title}" ≈ ${target} (cos ${line.canonical.similarity.toFixed(2)} ≥ 0.88) → reuse`, "ok", demo);
                 const parent = cs[line.edge.from];
                 if (parent && cs[target]) dispatch({ t: "edge", e: { src: line.edge.from, dst: target, kind: line.edge.kind } });
-                if (!ns[target]) track(target, "seed");
+                if (!ns[target]) { track(target, "seed"); slugs.push(target); }
                 continue;
               }
               const existing = cs[line.slug];
@@ -75,9 +76,10 @@ export function useExpand() {
               dispatch({ t: "concept", c, edge: line.edge.from !== line.slug ? { src: line.edge.from, dst: line.slug, kind: line.edge.kind } : undefined });
               track(line.slug, "seed");
               added++;
+              slugs.push(line.slug);
               say("CANONICALIZE", `"${line.title}" new concept (no neighbour ≥ 0.88)`, "info", demo);
               say("EXPAND", `+ ${line.slug}  [${line.edge.kind} ← ${line.edge.from}]  d${line.difficulty}`, "ok", demo);
-              dispatch({ t: "missionPatch", id, patch: { added, reused } });
+              dispatch({ t: "missionPatch", id, patch: { added, reused, slugs: [...slugs] } });
             } else if (line.type === "done") {
               say("EXPAND", `done: ${line.count} lines in ${line.ms}ms · ~$0.007`, "ok");
             } else if (line.type === "error") {
@@ -85,7 +87,7 @@ export function useExpand() {
             }
           }
         }
-        dispatch({ t: "missionPatch", id, patch: { status: "done", added, reused } });
+        dispatch({ t: "missionPatch", id, patch: { status: "done", added, reused, slugs: [...slugs] } });
       } catch (e) {
         say("EXPAND", (e as Error).message, "err");
         dispatch({ t: "missionPatch", id, patch: { status: "error" } });

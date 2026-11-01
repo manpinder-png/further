@@ -1,12 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Silkscreen } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { StoreProvider } from "@/lib/client/store";
 import TopBar from "@/components/shell/TopBar";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
-const pixel = Silkscreen({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-silkscreen" });
 
 export const metadata: Metadata = {
   title: "Further",
@@ -16,7 +15,7 @@ export const viewport: Viewport = { themeColor: "#0a0a0b", width: "device-width"
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${mono.variable} ${pixel.variable}`}>
+    <html lang="en" className={`${geist.variable} ${mono.variable}`}>
       <body className="flex h-dvh flex-col overflow-hidden">
         <StoreProvider>
           <TopBar />

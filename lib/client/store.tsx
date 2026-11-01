@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import type { AgentName, Concept, Edge, EventKind, Explorer, FEvent, LogEntry, MatchRequest, Profile, UserNode } from "../types";
 import { replay } from "../math";
+import { pathFor, progressFor, suggestNext } from "../insight";
 import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
 import type { SystemStatus } from "../server/config";
 
@@ -20,6 +21,8 @@ export interface Mission {
   intent?: string;
   added: number;
   reused: number;
+  /** Topics this quest added, for quest progress. */
+  slugs?: string[];
 }
 
 /** Plain-language activity that isn't a map event (e.g. a match). */
@@ -50,8 +53,10 @@ interface State {
   sessions: SessionResult[];
   notes: Note[];
   fitKey: number;
-  /** Left-rail drawer (below 1280px). */
+  /** Left-pane drawer (phones). */
   rail: boolean;
+  /** Suggested topics the learner said "not now" to. */
+  dismissed: string[];
 }
 
 type Action =
@@ -69,10 +74,11 @@ type Action =
   | { t: "session"; r: SessionResult }
   | { t: "note"; text: string }
   | { t: "rail"; open: boolean }
+  | { t: "dismiss"; slug: string }
   | { t: "fit" };
 
 const SAVE_KEY = "further:map:v1";
-type Saved = Pick<State, "concepts" | "edges" | "events" | "missions" | "sessions" | "notes" | "profile">;
+type Saved = Pick<State, "concepts" | "edges" | "events" | "missions" | "sessions" | "notes" | "profile"> & { dismissed?: string[] };
 function load(): Saved | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -83,8 +89,8 @@ function load(): Saved | null {
 }
 function save(s: State) {
   try {
-    const { concepts, edges, events, missions, sessions, notes, profile } = s;
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ concepts, edges, events, missions: missions.filter((m) => m.status !== "running"), sessions, notes, profile }));
+    const { concepts, edges, events, missions, sessions, notes, profile, dismissed } = s;
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ concepts, edges, events, missions: missions.filter((m) => m.status !== "running"), sessions, notes, profile, dismissed }));
   } catch { /* storage blocked: map still works for this tab */ }
 }
 
@@ -107,6 +113,7 @@ const initial: State = {
   notes: [],
   fitKey: 0,
   rail: false,
+  dismissed: [],
 };
 
 function reducer(s: State, a: Action): State {
@@ -118,6 +125,7 @@ function reducer(s: State, a: Action): State {
         return {
           ...s,
           ...a.saved,
+          dismissed: a.saved.dismissed ?? [],
           ready: true,
           explorers,
           log: [{ id: logId++, at: a.now, agent: "SYSTEM", msg: `Restored map from this browser (${a.saved.events.length} events)`, level: "info" }],
@@ -165,6 +173,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, notes: [...s.notes.slice(-49), { at: Date.now(), text: a.text }] };
     case "rail":
       return { ...s, rail: a.open };
+    case "dismiss":
+      return s.dismissed.includes(a.slug) ? s : { ...s, dismissed: [...s.dismissed, a.slug] };
     case "fit":
       return { ...s, fitKey: s.fitKey + 1 };
   }
@@ -234,6 +244,20 @@ export function useMapStats() {
       onMap: by("seeded"),
       sessions: sessionKeys.size,
       quests: missions.length,
+      ...progressFor(nodes),
     };
   }, [nodes, events, missions]);
+}
+
+/** Topics the map suggests next, from how you learn (lib/insight.ts). */
+export function useSuggestions() {
+  const { concepts, nodes, events, dismissed, ready } = useStore();
+  return useMemo(() => (ready ? suggestNext(concepts, nodes, events, dismissed) : []), [concepts, nodes, events, dismissed, ready]);
+}
+
+/** The ordered "Your path" list. */
+export function usePath() {
+  const { concepts, edges, nodes } = useStore();
+  const suggestions = useSuggestions();
+  return useMemo(() => pathFor(concepts, edges, nodes, suggestions), [concepts, edges, nodes, suggestions]);
 }

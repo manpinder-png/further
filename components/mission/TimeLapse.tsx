@@ -48,7 +48,7 @@ export default function TimeLapse({ start, end, tl, setTl }: { start: number; en
   return (
     <>
       <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-center" aria-live="polite">
-        <div className="pixel text-3xl text-white [text-shadow:3px_3px_0_#000]">Day {day}</div>
+        <div className="display text-3xl text-white [text-shadow:3px_3px_0_#000]">Day {day}</div>
         <div className="mt-1.5 bg-black/60 px-2 py-0.5 text-sm text-text">{new Date(tl.t).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
       </div>
       <div className="absolute inset-x-3 bottom-3 flex items-center gap-3 border border-line-2 bg-panel/95 px-3 py-2 backdrop-blur md:right-16">

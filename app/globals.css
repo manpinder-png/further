@@ -29,7 +29,6 @@
 
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-pixel: var(--font-silkscreen), monospace;
 
   /* Type scale. Nothing below 11px. */
   --text-2xs: 11px;
@@ -73,7 +72,8 @@ body {
   font-weight: 500;
 }
 
-.pixel { font-family: var(--font-pixel); letter-spacing: 0.02em; }
+/* Game moments: level, "Day N", explain-back result. */
+.display { font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -129,6 +129,54 @@ body {
   .touch-target { min-height: 44px; min-width: 44px; }
 }
 
+/* ---------- Knowledge map (DESIGN D34–D37) ---------- */
+.kpos { position: absolute; left: 0; top: 0; will-change: transform; }
+.kpos:hover, .kpos:focus-within { z-index: 5; }
+.kcard {
+  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 5px;
+  width: 100%; height: 100%; padding: 6px 10px; text-align: left;
+  border: 1px solid var(--color-line-2); border-radius: 8px;
+  background: var(--color-panel); color: var(--color-text);
+  transition: opacity .35s, filter .35s, box-shadow .35s, border-color .35s, background .35s;
+}
+.kcard:hover, .kcard:focus-visible { opacity: 1 !important; filter: none !important; border-color: var(--color-dim); }
+.kcard-understood {
+  background: linear-gradient(180deg, #11292b, #0c1c1e); border-color: #2b8e93;
+  box-shadow: 0 0 0 1px rgba(77,223,230,.12), 0 0 26px -4px rgba(77,223,230,.5);
+  animation: breathe 4.5s ease-in-out infinite;
+}
+.kcard-explored { background: #17171b; border-color: #45454e; }
+.kcard-seeded { background: rgba(14,14,16,.88); border-style: dashed; border-color: #4a4a53; color: #c4c2bd; }
+.kcard-fading { filter: blur(1px); }
+.kcard-suggested { background: rgba(10,10,11,.72); border-style: dashed; border-color: #5a5a63; color: var(--color-muted); }
+.kcard.is-selected {
+  border-color: var(--color-accent); opacity: 1 !important; filter: none !important;
+  box-shadow: 0 0 0 1px var(--color-accent), 0 0 30px -6px rgba(242,107,29,.7);
+}
+.kpos.is-selected { z-index: 6; }
+.kbar { display: block; height: 3px; background: #2a2a30; border-radius: 2px; overflow: hidden; }
+.kbar > i { display: block; height: 100%; background: var(--color-mastery); border-radius: 2px; transition: width .6s; }
+.kyou {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;
+  width: 116px; height: 116px; border-radius: 9999px;
+  background: radial-gradient(circle at 50% 40%, #1b1b20, #0d0d0f 70%);
+  border: 1px solid var(--color-line-2);
+  box-shadow: 0 0 60px -10px rgba(242,107,29,.35);
+}
+.kpop { animation: kpop .7s cubic-bezier(.2,1.4,.4,1) both; }
+.kburst {
+  position: absolute; inset: -6px; border: 2px solid var(--color-mastery); border-radius: 12px;
+  pointer-events: none; animation: kburst 1.3s ease-out forwards;
+}
+.kfloat {
+  position: absolute; left: 50%; top: -6px; transform: translateX(-50%); white-space: nowrap; pointer-events: none;
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-mastery);
+  animation: kfloat 1.8s ease-out forwards;
+}
+.kflow { animation: kflow 1.6s linear infinite; }
+.kcaption { animation: slideup .3s ease-out both; }
+.klevel { animation: klevel 2.8s ease-out both; }
+
 /* Hairline scrollbars */
 .scroll { scrollbar-width: thin; scrollbar-color: #2e2e34 transparent; overflow-y: auto; }
 
@@ -152,6 +200,13 @@ body {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
   animation: scan 1.2s linear infinite;
 }
+
+@keyframes breathe { 50% { box-shadow: 0 0 0 1px rgba(77,223,230,.2), 0 0 36px -2px rgba(77,223,230,.62); } }
+@keyframes kpop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes kburst { from { transform: scale(.85); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
+@keyframes kfloat { 0% { opacity: 0; transform: translate(-50%, 0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -34px); } }
+@keyframes kflow { to { stroke-dashoffset: -42; } }
+@keyframes klevel { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

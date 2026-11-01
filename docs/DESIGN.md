@@ -34,7 +34,7 @@ A running record of how the `ui` branch UI was designed and why. Newest decision
 - **Status pills** in the top bar show each backend dependency with a dot: green = live, orange = demo, red = down. This is how the UI is honest about what's real at any moment.
 - **The agent log** (left column) prints each pipeline step as it happens (`TRANSCRIBE → EXPAND → CANONICALIZE → STREAM`). It turns the 20% "technical depth" score into something visible instead of something we have to claim.
 
-### 2.2 The world: 2D Minecraft map
+### 2.2 The world: 2D Minecraft map (replaced by the knowledge map, see §6c)
 
 | Map concept | Minecraft metaphor | Driven by (plan §5.4) |
 |---|---|---|
@@ -112,7 +112,7 @@ The live version of this table (with status) is on `/ops`, generated from `lib/r
 | F2 streaming expansion + canonicalization | Map bloom, Missions, Agent log | `POST /api/expand` (SSE) · `lib/canonicalize.ts` → pgvector | Connor |
 | F3 node card, cited source, flowchart | `components/mission/Inspector.tsx` | `GET /api/card/:slug` · `POST /api/resources/verify` | Connor / Manpinder |
 | F4 explain-back | Inspector → Explain it back | `POST /api/explain` | Connor |
-| F5 interest/mastery, bloom/fade | `components/map/WorldMap.tsx` | `lib/math.ts` | Sirpreet |
+| F5 interest/mastery, bloom/fade | `components/map/KnowledgeMap.tsx` · `lib/graph-layout.ts` | `lib/math.ts` | Sirpreet |
 | F6 time-lapse | `components/mission/TimeLapse.tsx` | `lib/math.replay` over `events` | Sirpreet |
 | F7 matching + handshake | Explorers panel, `MatchModal.tsx` | `POST /api/match` · `lib/matching.ts` · Presence | Amit |
 | F8 jigsaw session | `app/session/page.tsx` | `POST /api/session/:id/message` · Broadcast | Amit / Connor |
@@ -162,7 +162,22 @@ The hackathon UI showed builder tooling to everyone. This pass makes the default
 | D32 | `prefers-reduced-motion`: no particles, bounce, flicker or camera easing on the map; replay steps a day at a time; match ring stays full while the number counts down | Motion is decoration here, never information |
 | D33 | MCP client config shows `<origin>/mcp` (a rewrite to `/api/mcp`); token masked as `fur_••••3a9c` with Reveal/Copy | Friendlier URL; secrets hidden by default |
 
+## 6c. Knowledge map iteration (Nov 1, `feature/siri-ui/iteration-nov1`)
+
+The pixel world was fun but hard to read: the map was a picture, not a diagram. This pass keeps the game feel and the fog/dim/lit states, drops the Minecraft theme, and makes the map a readable flowchart that visibly learns from you. Connor's `feature/connor-live-backend` was used as a reference (its learner model in `lib/learn.ts`), not merged.
+
+| # | Decision | Why |
+|---|---|---|
+| D34 | **Radial flowchart with you at the centre** (`lib/graph-layout.ts`). Rings are state: understood (inner) → exploring → on your map (outer, in fog). Angle comes from a spanning tree of the concept graph, so a topic and its children point the same way. Cards are sized to their titles and pushed apart until nothing overlaps | Every label is readable at the default zoom. "Closer to you = you know it" needs no legend |
+| D35 | **Glowing cards replace blocks.** Understood: cyan glow, "Lv N". Explored: solid card with a mastery bar. On your map: dashed card. Fading (interest < 0.3): blurred and faded. Fog is an SVG mask that lifts around what you've explored. Paths: arrow = learn this first, solid = part of, dotted = related; mastered paths glow cyan with a flowing pulse. Pixel textures, player heads and the pixel font are gone; game moments use a bold display style | Same lit/dim/fog semantics, cleaner and more legible. Cards are real buttons, so keyboard and screen-reader support comes for free |
+| D36 | **The map learns from you** (`lib/insight.ts`). Suggested next topics appear as ghost cards next to the topic they grow from, with a reason drawn from your behaviour ("You finish videos…", "You understood X…"). "Not now" stops the suggestion (stored). Your path orders the next steps: finish what you've explored, then what's ready, then a suggestion, then what's fading | Ideas from Connor's learner model (strengths, fading, frontier, stop serving what they skip). Demo heuristics today; TODO(Connor): Muse Spark picks suggestions from the learner summary in live mode |
+| D37 | **Living motion and narration.** When the graph changes, cards glide to their new place: learning pulls a topic inward, fading pushes it out; new topics grow out of their parent. Unlock bursts when a topic is learned, a level-up moment for the overall level, and short captions that say what changed and why ("Attention is understood. It moved closer to you.") | Makes the graph feel alive rather than a static chart. All motion is skipped with `prefers-reduced-motion`; captions are `aria-live` |
+| D38 | **Collapsible "Your journey" pane**: Progress (level, XP, counts, this week), Your path, Quests (with "N of M explored" progress), Activity, Connections (learned with, learning now), Sessions. Collapses to a 56px icon strip (default below 1280px, remembered); a drawer on phones. Sections are individually collapsible | One place for everything about your progress, without stealing map width when you don't need it |
+| D39 | Overall level = √(XP / 40) + 1, where XP = Σ mastery × 100 + 50 per understood topic | Small, frequent level-ups early; never shown as a grade |
+
 ## 7. Known gaps (UI side)
+
+- Knowledge map on phones fits to what you've explored; the fogged outer ring is a pan away. Text at the desktop default zoom is 10–13px on very large maps; zoom in or collapse the pane for more room.
 
 - The revealed demo MCP token is literally `fur_demo_7f3a9c`. Real per-user tokens (Connor) fix this.
 - Regenerate token is disabled ("Coming soon") until the token endpoint exists.

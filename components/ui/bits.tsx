@@ -1,33 +1,78 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { blockKindFor, blockTexture, drawHead, hashStr, type BlockKind } from "@/components/map/pixels";
+import { useEffect, useState } from "react";
 import { BUILDER_VIEW } from "@/lib/builder";
 
-/** A map block rendered as an inline icon, so panels and map share one vocabulary. */
-export function BlockIcon({ kind, slug = "x", size = 20 }: { kind: BlockKind; slug?: string; size?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current!;
-    const ctx = c.getContext("2d")!;
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, 32, 32);
-    ctx.drawImage(blockTexture(kind, 16, hashStr(slug)), 0, 0, 32, 32);
-  }, [kind, slug]);
-  return <canvas ref={ref} width={32} height={32} style={{ width: size, height: size, imageRendering: "pixelated" }} aria-hidden />;
+/**
+ * A topic's state as a small glowing glyph (DESIGN D35). The map cards and every panel share it.
+ * understood: filled, glowing · explored: ring that fills with mastery · seeded: dashed ring in fog ·
+ * suggested: dashed ring with a plus.
+ */
+export function NodeIcon({ state, mastery = 0, size = 16 }: { state: string; mastery?: number; slug?: string; size?: number }) {
+  const r = 6, C = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" className="shrink-0" aria-hidden>
+      {state === "understood" ? (
+        <>
+          <circle cx="8" cy="8" r="7.5" fill="var(--color-mastery)" opacity=".18" />
+          <circle cx="8" cy="8" r="5.6" fill="var(--color-mastery)" />
+          <path d="m5.4 8.1 1.8 1.8 3.4-3.6" fill="none" stroke="#062022" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : state === "explored" ? (
+        <>
+          <circle cx="8" cy="8" r={r} fill="none" stroke="#3a3a42" strokeWidth="2" />
+          <circle cx="8" cy="8" r={r} fill="none" stroke="var(--color-mastery)" strokeWidth="2" strokeDasharray={C} strokeDashoffset={C * (1 - Math.max(0.08, Math.min(1, mastery / 0.7)))} transform="rotate(-90 8 8)" />
+          <circle cx="8" cy="8" r="2.2" fill="var(--color-text)" />
+        </>
+      ) : state === "suggested" ? (
+        <>
+          <circle cx="8" cy="8" r={r} fill="none" stroke="#85858d" strokeWidth="1.3" strokeDasharray="2 2" />
+          <path d="M8 5.5v5M5.5 8h5" stroke="#cfccc6" strokeWidth="1.3" />
+        </>
+      ) : (
+        <circle cx="8" cy="8" r={r} fill="none" stroke="#85858d" strokeWidth="1.3" strokeDasharray="2 2" />
+      )}
+    </svg>
+  );
 }
 
-export function NodeIcon({ state, mastery, slug, size }: { state: string; mastery: number; slug: string; size?: number }) {
-  return <BlockIcon kind={blockKindFor(state, mastery)} slug={slug} size={size} />;
+/** A person: coloured circle with an initial. */
+export function Head({ color, size = 16, name }: { color: string; size?: number; name?: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-[#0a0a0b]"
+      style={{ width: size, height: size, background: color, fontSize: Math.max(8, size * 0.5), lineHeight: 1 }}
+      aria-hidden
+    >
+      {name ? name.trim()[0]?.toUpperCase() : null}
+    </span>
+  );
 }
 
-export function Head({ color, size = 16 }: { color: string; size?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const ctx = ref.current!.getContext("2d")!;
-    ctx.clearRect(0, 0, 32, 32);
-    drawHead(ctx, 0, 0, 4, color);
-  }, [color]);
-  return <canvas ref={ref} width={32} height={32} style={{ width: size, height: size, imageRendering: "pixelated" }} aria-hidden />;
+/** Brand mark: you at the centre, three topics around you. */
+export function Logo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden>
+      <path d="M10 10 4 4.5M10 10l6.5-3M10 10l1 7" stroke="#4ddfe6" strokeOpacity=".55" strokeWidth="1.3" />
+      <circle cx="4" cy="4.5" r="2.4" fill="#4ddfe6" />
+      <circle cx="16.5" cy="7" r="2" fill="none" stroke="#a3a3ab" strokeWidth="1.2" />
+      <circle cx="11" cy="17" r="1.8" fill="none" stroke="#85858d" strokeWidth="1.1" strokeDasharray="1.6 1.4" />
+      <circle cx="10" cy="10" r="3.4" fill="#f26b1d" />
+    </svg>
+  );
+}
+
+/** Overall level as a ring (game moment). */
+export function LevelRing({ level, frac, size = 44 }: { level: number; frac: number; size?: number }) {
+  const r = 16, C = 2 * Math.PI * r;
+  return (
+    <span className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90" aria-hidden>
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#24242a" strokeWidth="3.5" />
+        <circle cx="20" cy="20" r={r} fill="none" stroke="var(--color-mastery)" strokeWidth="3.5" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - Math.max(0.02, Math.min(1, frac)))} />
+      </svg>
+      <span className="display tabular-nums" style={{ fontSize: size * 0.36 }}>{level}</span>
+    </span>
+  );
 }
 
 /** Mastery as a segmented bar (DESIGN D10). Mastery colour = cyan. */

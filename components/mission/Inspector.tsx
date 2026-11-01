@@ -2,13 +2,15 @@
 // Inspector: the concept card (plan §5.3, E3). One short, real, cited source, checked live;
 // diagrams marked as a sketch; explain-back opt-in. Order: title → hook → source → explain → diagram.
 import { useEffect, useRef, useState } from "react";
-import { useStore } from "@/lib/client/store";
+import { useStore, useSuggestions } from "@/lib/client/store";
 import { transcribeBlob, useRecorder } from "@/lib/client/hooks";
 import { liveInterest } from "@/lib/math";
-import { BlockIcon, CloseIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
+import { CloseIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
 import Mermaid from "@/components/ui/Mermaid";
 import { STATE_LABEL, personName } from "@/lib/client/format";
+import { CATALOG } from "@/lib/demo/seed";
 import type { NodeState, Resource } from "@/lib/types";
+import type { Suggestion } from "@/lib/insight";
 
 interface Card {
   slug: string;
@@ -34,17 +36,19 @@ export function StateBadge({ state }: { state: NodeState }) {
 
 export default function Inspector({ onClose }: { onClose?: () => void }) {
   const { selected, concepts, nodes, track, say, dispatch } = useStore();
+  const suggestions = useSuggestions();
   const [card, setCard] = useState<Card | null>(null);
   const c = selected ? concepts[selected] : null;
   const n = selected ? nodes[selected] : null;
+  const onMap = !!c;
 
-  // open (+0.3 interest) on select, dwell (+0.2) after 30s (plan §5.4)
+  // open (+0.3 interest) on select, dwell (+0.2) after 30s (plan §5.4). Suggestions aren't on the map yet.
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || !onMap) return;
     track(selected, "open");
     const t = setTimeout(() => { track(selected, "dwell"); say("SYSTEM", `dwell 30s on ${selected} → interest +0.2`); }, 30_000);
     return () => clearTimeout(t);
-  }, [selected, track, say]);
+  }, [selected, onMap, track, say]);
 
   useEffect(() => {
     if (!selected) return;
@@ -57,6 +61,8 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
     });
   }, [selected, say]);
 
+  const sugg = selected && !c ? suggestions.find((s) => s.slug === selected) : undefined;
+  if (sugg) return <SuggestionCard s={sugg} />;
   if (!c || !n) return <MapSummary />;
   const interest = liveInterest(n);
   const close = () => { dispatch({ t: "select", slug: null }); onClose?.(); };
@@ -267,8 +273,8 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
       {result ? (
         <div className="enter" aria-live="polite">
           <div className="mb-2 flex items-center gap-1" aria-label={`${result.score} of 3`}>
-            {[0, 1, 2].map((i) => <BlockIcon key={i} kind={i < result.score ? "diamond" : "cobble"} slug={`s${i}`} size={22} />)}
-            <span className="pixel ml-2 text-sm">{result.score}/3</span>
+            {[0, 1, 2].map((i) => <NodeIcon key={i} state={i < result.score ? "understood" : "seeded"} size={20} />)}
+            <span className="display ml-2 text-sm">{result.score}/3</span>
             <span className="ml-auto"><Demo title="Graded by a demo heuristic." /></span>
           </div>
           <p className="text-sm text-text/90">{result.feedback}</p>
@@ -276,7 +282,7 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
         </div>
       ) : (
         <>
-          <p className="mb-2.5 text-sm text-muted">Say what {title.toLowerCase()} is in your own words. About 20 seconds.</p>
+          <p className="mb-2.5 text-sm text-muted">Say what {title.toLowerCase()} is in your own words. About 20 seconds. This is how a topic becomes understood.</p>
           <div className="flex items-center gap-2">
             <button className={`btn ${rec.state === "recording" ? "btn-primary" : ""}`} onClick={onMic} disabled={rec.state === "processing"}>
               {rec.state === "recording" ? `■ Stop · ${Math.floor((20000 - rec.elapsed) / 1000)}s` : rec.state === "processing" ? "Checking…" : "Explain by voice"}
@@ -311,39 +317,97 @@ function MapSummary() {
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-10 shrink-0 items-center border-b border-line px-4"><h2 className="label">Your map</h2></header>
       <div className="scroll min-h-0 flex-1 px-4 py-4">
-        <p className="mb-4 text-base text-muted">Tap a block on the map to open its card. Blocks you explore grow brighter. Ones you skip fade back into fog.</p>
-        <dl className="mb-5 grid grid-cols-3 border border-line">
-          {([["understood", "diamond"], ["explored", "gold"], ["seeded", "cobble"]] as const).map(([s, k]) => (
+        <p className="mb-4 text-base text-muted">Tap a topic on the map to open its card. Topics you learn light up and move closer to you. Ones you skip drift back into the fog.</p>
+        <dl className="mb-5 grid grid-cols-3 overflow-hidden rounded-md border border-line">
+          {(["understood", "explored", "seeded"] as const).map((s) => (
             <div key={s} className="flex flex-col items-center gap-1 border-r border-line py-3 last:border-r-0">
-              <BlockIcon kind={k} slug={s} size={22} />
+              <NodeIcon state={s} mastery={0.4} size={20} />
               <dd className="text-xl font-semibold tabular-nums">{stats[s]}</dd>
               <dt className="text-xs text-muted">{STATE_LABEL[s]}</dt>
             </div>
           ))}
         </dl>
-        <h3 className="label mb-2">Legend</h3>
+        <h3 className="label mb-2">How to read the map</h3>
         <ul className="space-y-2 text-sm text-text/90">
-          <li className="flex items-center gap-2"><BlockIcon kind="cobble" size={16} /> On your map: not opened yet</li>
-          <li className="flex items-center gap-2"><BlockIcon kind="iron" size={16} /><BlockIcon kind="gold" size={16} /> Explored: brighter as you learn</li>
-          <li className="flex items-center gap-2"><BlockIcon kind="diamond" size={16} /> Understood</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-[3px] w-4 bg-[#b0b0b0] shadow-[0_3px_0_#6b4a2b]" /> Rail: learn this first</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-2 w-4 bg-[#8f8f8f]" /> Stone road: part of</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-2 w-4 bg-[#96693f]" /> Dirt path: related</li>
-          <li className="flex items-center gap-2"><span className="inline-block h-3 w-4 bg-[#07070b] outline outline-1 outline-line-2" /> Fog: not explored yet, or faded</li>
-          <li className="text-muted">Bigger blocks = deeper understanding.</li>
+          <li className="flex items-center gap-2"><NodeIcon state="understood" size={16} /> Understood: glows, closest to you</li>
+          <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.35} size={16} /> Explored: the ring fills as you learn</li>
+          <li className="flex items-center gap-2"><NodeIcon state="seeded" size={16} /> On your map: in the fog until you open it</li>
+          <li className="flex items-center gap-2"><NodeIcon state="suggested" size={16} /> Suggested next: picked from how you learn</li>
+          <li className="flex items-center gap-2"><Line arrow /> Learn this first</li>
+          <li className="flex items-center gap-2"><Line /> Part of</li>
+          <li className="flex items-center gap-2"><Line dotted /> Related</li>
+          <li className="flex items-center gap-2"><Line lit /> A path you&apos;ve mastered</li>
+          <li className="text-muted">Rings: understood closest to you, then exploring, then the fog. Bigger cards = deeper understanding. Blurry cards are fading from memory.</li>
         </ul>
         <h3 className="label mb-2 mt-5">Recent</h3>
         <ul className="space-y-0.5">
           {[...list].sort((a, b) => b.lastTouched - a.lastTouched).slice(0, 10).map((n) => (
             <li key={n.slug}>
-              <button data-slug={n.slug} onClick={() => dispatch({ t: "select", slug: n.slug })} className="flex min-h-9 w-full items-center gap-2 px-1 text-left text-sm hover:bg-panel-2">
-                <NodeIcon state={n.state} mastery={n.mastery} slug={n.slug} size={16} />
+              <button data-slug={n.slug} onClick={() => dispatch({ t: "select", slug: n.slug })} className="flex min-h-9 w-full items-center gap-2 rounded px-1 text-left text-sm hover:bg-panel-2">
+                <NodeIcon state={n.state} mastery={n.mastery} size={16} />
                 <span className="truncate">{concepts[n.slug]?.title ?? n.slug}</span>
                 <span className="ml-auto shrink-0 text-xs text-muted">{STATE_LABEL[n.state]}</span>
               </button>
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+function Line({ arrow, dotted, lit }: { arrow?: boolean; dotted?: boolean; lit?: boolean }) {
+  const c = lit ? "#4ddfe6" : "#8a8a93";
+  return (
+    <svg width="22" height="10" viewBox="0 0 22 10" className="shrink-0" aria-hidden>
+      <path d="M1 5h17" stroke={c} strokeWidth={lit ? 2.2 : 1.6} strokeDasharray={dotted ? "1.5 3.5" : undefined} strokeLinecap="round" />
+      {arrow && <path d="M15 1.5 21 5l-6 3.5z" fill={c} />}
+    </svg>
+  );
+}
+
+/** A suggested topic: not on the map yet. Add it, or say not now (the map stops suggesting it). */
+function SuggestionCard({ s }: { s: Suggestion }) {
+  const { dispatch, track, concepts } = useStore();
+  const anchorTitle = concepts[s.anchor]?.title ?? s.anchor;
+  const close = () => dispatch({ t: "select", slug: null });
+  const add = () => {
+    const anchor = concepts[s.anchor];
+    dispatch({ t: "concept", c: { ...(CATALOG[s.slug] ?? {}), slug: s.slug, title: s.title, hook: s.hook, domain: anchor?.domain ?? "ai-tech" }, edge: { src: s.anchor, dst: s.slug, kind: s.kind } });
+    track(s.slug, "seed", { via: "suggestion" });
+    dispatch({ t: "note", text: `Added ${s.title} from a suggestion` });
+    dispatch({ t: "select", slug: s.slug });
+  };
+  const notNow = () => { dispatch({ t: "dismiss", slug: s.slug }); close(); };
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex h-10 shrink-0 items-center justify-between border-b border-line pl-4 pr-1">
+        <h2 className="label">Suggested next</h2>
+        <button className="btn btn-ghost btn-icon min-h-9 border-transparent text-muted hover:text-text" onClick={close} aria-label="Close suggestion" title="Close (Esc)">
+          <CloseIcon />
+        </button>
+      </header>
+      <div className="scroll min-h-0 flex-1">
+        <div className="border-b border-line px-4 py-3">
+          <div className="flex items-center gap-3">
+            <NodeIcon state="suggested" size={36} />
+            <div className="min-w-0">
+              <h3 className="text-xl font-semibold">{s.title}</h3>
+              <p className="mt-0.5 text-xs text-muted">Grows from {anchorTitle}</p>
+            </div>
+          </div>
+        </div>
+        <section className="border-b border-line px-4 py-3">
+          <h4 className="label mb-1.5">Why this</h4>
+          <p className="text-base text-text/90">{s.reason}</p>
+        </section>
+        <section className="border-b border-line px-4 py-3" aria-label="Summary">
+          <p className="text-base text-text/90">{s.hook}</p>
+        </section>
+        <div className="flex gap-2 px-4 py-3">
+          <button className="btn btn-primary flex-1" onClick={add}>Add to my map</button>
+          <button className="btn btn-ghost" onClick={notNow} title="The map won't suggest this again">Not now</button>
+        </div>
       </div>
     </div>
   );

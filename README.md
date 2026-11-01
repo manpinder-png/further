@@ -60,7 +60,7 @@ app/
     inbox/                 demo stand-in for Supabase Realtime
     health/                status pills
 components/
-  map/                     canvas world: pixel textures, fog, blocks, paths, heads
+  map/                     KnowledgeMap: radial flowchart, fog, glowing cards, living layout
   mission/                 left rail, inspector, command bar, match modal, time-lapse
   shell/ ui/
 lib/

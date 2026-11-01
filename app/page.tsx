@@ -1,24 +1,30 @@
 "use client";
 // The map screen (plan §2). Bloom, explore, time-lapse, match and off-app captures all land here.
-// Layout: ≥1280 three columns · 768–1279 map + 360px inspector, rail in a drawer ·
-// <768 full-screen map, inspector as a bottom sheet, rail in a drawer.
+// Layout: ≥768 journey pane (collapsible) · map · inspector. The pane starts collapsed below 1280.
+// <768 full-screen map, inspector as a bottom sheet, journey pane in a drawer.
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useStore } from "@/lib/client/store";
+import { useMapStats, useStore, useSuggestions } from "@/lib/client/store";
+import { useNarration } from "@/lib/client/narration";
 import { useExpand, useInbox, useMatchJob } from "@/lib/client/hooks";
 import { replay } from "@/lib/math";
+import { progressFor } from "@/lib/insight";
 import LeftRail from "@/components/mission/LeftRail";
 import Inspector from "@/components/mission/Inspector";
 import CommandBar from "@/components/mission/CommandBar";
 import MatchModal from "@/components/mission/MatchModal";
 import TimeLapse, { type TL } from "@/components/mission/TimeLapse";
-import { CloseIcon } from "@/components/ui/bits";
+import { CloseIcon, useReducedMotion } from "@/components/ui/bits";
 
-const WorldMap = dynamic(() => import("@/components/map/WorldMap"), { ssr: false });
+const KnowledgeMap = dynamic(() => import("@/components/map/KnowledgeMap"), { ssr: false });
 const BANNER_KEY = "further:sample-banner-dismissed";
+const PANE_KEY = "further:pane:collapsed";
 
 export default function MapScreen() {
-  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey, rail } = useStore();
+  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey, rail, profile } = useStore();
+  const stats = useMapStats();
+  const suggestions = useSuggestions();
+  const reduced = useReducedMotion();
   const { run } = useExpand();
   const runMatch = useMatchJob();
   const [tl, setTl] = useState<TL>({ on: false, t: 0, playing: false });
@@ -70,6 +76,35 @@ export default function MapScreen() {
     try { localStorage.setItem(BANNER_KEY, "1"); } catch { /* ignore */ }
   };
 
+  // Journey pane: collapsible on tablet and desktop. Starts collapsed below 1280px unless the learner chose.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(PANE_KEY);
+      setCollapsed(v === null ? window.innerWidth < 1280 : v === "1");
+    } catch { setCollapsed(window.innerWidth < 1280); }
+  }, []);
+  const collapse = (v: boolean) => {
+    setCollapsed(v);
+    try { localStorage.setItem(PANE_KEY, v ? "1" : "0"); } catch { /* ignore */ }
+    setTimeout(() => dispatch({ t: "fit" }), 260);
+  };
+
+  // Narrated changes and level-ups (paused during the weekly replay).
+  const captions = useNarration(suggestions, tl.on);
+  const [levelUp, setLevelUp] = useState<number | null>(null);
+  const lastLevel = useRef<number | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    if (lastLevel.current !== null && stats.level > lastLevel.current) {
+      setLevelUp(stats.level);
+      const t = setTimeout(() => setLevelUp(null), 2800);
+      lastLevel.current = stats.level;
+      return () => clearTimeout(t);
+    }
+    lastLevel.current = stats.level;
+  }, [ready, stats.level]);
+
   const start = events[0]?.at ?? Date.now();
   const end = Date.now();
   const shownNodes = useMemo(() => (tl.on ? replay(events, tl.t) : nodes), [tl.on, tl.t, events, nodes]);
@@ -77,23 +112,26 @@ export default function MapScreen() {
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      <div className="relative grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[300px_minmax(0,1fr)_380px]">
-        <aside className="hidden min-h-0 border-r border-line bg-panel xl:block" aria-label="Quests and activity">
-          <LeftRail />
+      <div className="relative grid min-h-0 flex-1 md:grid-cols-[auto_minmax(0,1fr)_360px] xl:grid-cols-[auto_minmax(0,1fr)_380px]">
+        <aside className={`hidden min-h-0 border-r border-line bg-panel transition-[width] duration-200 md:block ${collapsed ? "w-14" : "w-[300px] xl:w-[320px]"}`} aria-label="Your journey">
+          <LeftRail collapsed={collapsed} onCollapse={collapse} />
         </aside>
 
-        <section className="relative min-h-0 bg-black" aria-label="Your map">
+        <section className="relative min-h-0 bg-bg" aria-label="Your map">
           {ready && (
-            <WorldMap
+            <KnowledgeMap
               concepts={conceptList}
               edges={edges}
               nodes={shownNodes}
+              suggestions={tl.on ? [] : suggestions}
               explorers={tl.on ? [] : explorers}
               selected={selected}
               onSelect={(slug) => dispatch({ t: "select", slug })}
               now={tl.on ? tl.t : end}
               fitKey={fitKey}
               holdCamera={tl.on}
+              celebrate={!tl.on}
+              you={tl.on ? { name: profile.displayName, ...progressFor(shownNodes) } : { name: profile.displayName, level: stats.level, frac: stats.frac }}
             />
           )}
           <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
@@ -107,6 +145,24 @@ export default function MapScreen() {
             )}
             {!tl.on && <span className="bg-black/70 px-2 py-0.5 text-sm font-medium text-text">AI &amp; Tech</span>}
           </div>
+          {/* Narrated changes */}
+          {!tl.on && captions.length > 0 && (
+            <ul className="pointer-events-none absolute inset-x-3 bottom-16 flex flex-col items-center gap-1.5" aria-live="polite" aria-label="What changed">
+              {captions.map((c) => (
+                <li key={c.id} className={`kcaption flex max-w-[min(520px,100%)] items-center gap-2 rounded-full border bg-panel/95 px-3.5 py-1.5 text-sm shadow-lg backdrop-blur ${c.tone === "up" ? "border-[#1b4a4d]" : "border-line-2"}`}>
+                  <span className={`dot ${c.tone === "up" ? "bg-mastery" : c.tone === "fade" ? "bg-dim" : "bg-text"}`} aria-hidden />
+                  <span className="min-w-0">{c.text}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Level-up: a game moment */}
+          {levelUp && (
+            <div className={`${reduced ? "" : "klevel"} pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 rounded-xl border border-[#1b4a4d] bg-panel/95 px-6 py-3 text-center shadow-[0_0_60px_-10px_rgba(77,223,230,.6)]`} role="status">
+              <div className="text-xs text-mastery">Level up</div>
+              <div className="display text-3xl">Level {levelUp}</div>
+            </div>
+          )}
           <TimeLapse start={start} end={end} tl={tl} setTl={setTl} />
           <MatchModal />
         </section>
@@ -115,12 +171,12 @@ export default function MapScreen() {
           <Inspector />
         </aside>
 
-        {/* Drawer: left rail below 1280px */}
+        {/* Drawer: journey pane on phones */}
         {rail && (
-          <div className="absolute inset-0 z-40 xl:hidden">
-            <button className="absolute inset-0 bg-black/50" aria-label="Close quests and activity" tabIndex={-1} onClick={() => dispatch({ t: "rail", open: false })} />
-            <aside id="left-rail" className="enter-left absolute inset-y-0 left-0 w-[min(320px,88vw)] border-r border-line bg-panel shadow-2xl" aria-label="Quests and activity">
-              <LeftRail />
+          <div className="absolute inset-0 z-40 md:hidden">
+            <button className="absolute inset-0 bg-black/50" aria-label="Close your journey" tabIndex={-1} onClick={() => dispatch({ t: "rail", open: false })} />
+            <aside id="left-rail" className="enter-left absolute inset-y-0 left-0 w-[min(320px,88vw)] border-r border-line bg-panel shadow-2xl" aria-label="Your journey">
+              <LeftRail drawer />
             </aside>
           </div>
         )}

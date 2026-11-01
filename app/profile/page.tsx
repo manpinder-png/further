@@ -72,12 +72,16 @@ export default function ProfilePage() {
             <h2 className="label">Inventory</h2>
             <span className="text-xs text-dim">{stats.concepts} concepts</span>
           </header>
-          <ul className="grid grid-cols-6 gap-1 p-3 sm:grid-cols-10">
+          <ul className="grid grid-cols-1 gap-1.5 p-3 min-[480px]:grid-cols-2 md:grid-cols-4">
             {[...list].sort((a, b) => b.mastery - a.mastery).map((n) => {
-              const label = `${concepts[n.slug]?.title ?? n.slug} · ${STATE_LABEL[n.state]}`;
+              const title = concepts[n.slug]?.title ?? n.slug;
               return (
-                <li key={n.slug} className="flex aspect-square items-center justify-center border border-line bg-bg" title={label} aria-label={label} tabIndex={0}>
-                  <NodeIcon state={n.state} mastery={n.mastery} slug={n.slug} size={26} />
+                <li key={n.slug} className={`flex items-center gap-2.5 rounded-md border px-3 py-2 ${n.state === "understood" ? "border-[#1b4a4d] bg-mastery-soft" : "border-line bg-bg"}`} title={`${title} · ${STATE_LABEL[n.state]}`}>
+                  <NodeIcon state={n.state} mastery={n.mastery} size={18} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm">{title}</span>
+                    <span className="block text-xs text-muted">{STATE_LABEL[n.state]}{n.state !== "seeded" ? ` · Level ${Math.min(10, Math.floor(n.mastery * 10))}` : ""}</span>
+                  </span>
                 </li>
               );
             })}

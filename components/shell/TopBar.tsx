@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/client/store";
-import { BlockIcon } from "@/components/ui/bits";
+import { Logo } from "@/components/ui/bits";
 import { BUILDER_VIEW } from "@/lib/builder";
 
 // Builder view only: one pill per backend dependency (green live, orange demo, red down).
@@ -36,19 +36,19 @@ export default function TopBar() {
     <header className="flex h-12 shrink-0 items-center gap-1 overflow-hidden whitespace-nowrap border-b border-line bg-bg pl-1 pr-2 sm:gap-3 sm:px-3">
       {onMap && (
         <button
-          className="btn btn-ghost btn-icon border-transparent xl:hidden"
+          className="btn btn-ghost btn-icon border-transparent md:hidden"
           onClick={() => dispatch({ t: "rail", open: !rail })}
-          aria-label={rail ? "Close quests and activity" : "Open quests and activity"}
+          aria-label={rail ? "Close your journey" : "Open your journey"}
           aria-expanded={rail}
           aria-controls="left-rail"
-          title="Quests and activity"
+          title="Your journey"
         >
           <MenuIcon />
         </button>
       )}
       <Link href="/" className="flex shrink-0 items-center gap-2 px-1" aria-label="Further home">
-        <BlockIcon kind="diamond" slug="further" size={18} />
-        <span className="pixel hidden text-md tracking-wider min-[380px]:inline">FURTHER</span>
+        <Logo size={20} />
+        <span className="hidden text-md font-semibold tracking-tight min-[380px]:inline">Further</span>
       </Link>
       <nav className="flex h-full items-stretch" aria-label="Main">
         {link("/", "Map")}
