@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-11-02T20:34:19.488Z",
+  "generatedAt": "2026-11-02T21:04:35.430Z",
   "generator": "scripts/dependency-map.mjs",
   "sourceFiles": 149,
-  "localImports": 466,
+  "localImports": 465,
   "domains": [
     {
       "id": "ui",
@@ -1226,11 +1226,6 @@
     {
       "from": "app/ops/page.tsx",
       "to": "lib/builder.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/ops/page.tsx",
-      "to": "components/builder/OpsConsole.tsx",
       "typeOnly": false
     },
     {
