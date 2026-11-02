@@ -6,7 +6,11 @@ import { usePath, useStore, useSuggestions } from "@/lib/client/store";
 import { transcribeBlob, useExpand, useRecorder } from "@/lib/client/hooks";
 import Teach from "@/components/learn/Teach";
 import { liveInterest } from "@/lib/math";
-import { CloseIcon, Demo, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
+import { CloseIcon, NodeIcon, Pips, XpBar } from "@/components/ui/bits";
+import { liveFetch, localJson } from "@/lib/client/live";
+import { mutationKey } from "@/domains/ui/contracts";
+import { useAIStream } from "@/lib/client/useAIStream";
+import ActivityPanel, { OperationStatus } from "@/components/activity/ActivityPanel";
 import Mermaid from "@/components/ui/Mermaid";
 import { STATE_LABEL, personName } from "@/lib/client/format";
 import { CATALOG } from "@/lib/demo/seed";
@@ -26,7 +30,7 @@ interface Card {
 const verified = new Map<string, Promise<{ ok: boolean; method?: string; title?: string; thumbnail?: string }>>();
 function verify(url: string) {
   if (!verified.has(url))
-    verified.set(url, fetch("/api/resources/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) }).then((r) => r.json()).catch(() => ({ ok: false, method: "network" })));
+    verified.set(url, liveFetch("/api/resources/verify", { method: "POST", body: JSON.stringify({ url }) }).then(async (r) => r.ok ? r.json() : ({ ok: false, method: "network" })).catch(() => ({ ok: false, method: "network" })));
   return verified.get(url)!;
 }
 const ytId = (u: string) => u.match(/(?:v=|youtu\.be\/)([\w-]{11})/)?.[1];
@@ -39,14 +43,18 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
   const { selected, concepts, nodes, track, say, dispatch, missions } = useStore();
   const suggestions = useSuggestions();
   const [card, setCard] = useState<Card | null>(null);
+  const [cardError, setCardError] = useState<string | null>(null);
+  const [cardAttempt, setCardAttempt] = useState(0);
+  const { activity: cardActivity, run: loadCard, cancel: cancelCard } = useAIStream();
   const c = selected ? concepts[selected] : null;
   const n = selected ? nodes[selected] : null;
   const onMap = !!c;
+  const lastOpened = useRef<string | null>(null);
 
   // open (+0.3 interest) on select, dwell (+0.2) after 30s (plan §5.4). Suggestions aren't on the map yet.
   useEffect(() => {
-    if (!selected || !onMap) return;
-    track(selected, "open");
+    if (!selected || !onMap) { lastOpened.current = null; return; }
+    if (lastOpened.current !== selected) { lastOpened.current = selected; void track(selected, "open"); }
     const t = setTimeout(() => { track(selected, "dwell"); say("SYSTEM", `dwell 30s on ${selected} → interest +0.2`); }, 30_000);
     return () => clearTimeout(t);
   }, [selected, onMap, track, say]);
@@ -54,20 +62,24 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     if (!selected) return;
     setCard(null);
+    setCardError(null);
+    const controller = new AbortController();
     const t0 = performance.now();
-    fetch(`/api/card/${selected}`).then((r) => r.json()).then((d: Card) => {
+    loadCard<Card>(`/api/card/${encodeURIComponent(selected)}`, { signal: controller.signal }).then((d) => {
+      if (controller.signal.aborted) return;
       const ms = Math.round(performance.now() - t0);
       setCard(d);
       say("CARD", `${selected}: ${d.cached ? "cache hit" : "generated"} in ${ms}ms${d.cached ? " (target < 500ms)" : ""}`, d.cached ? "ok" : "info", d.demo);
-    });
-  }, [selected, say]);
+    }).catch((error: Error) => { if (!controller.signal.aborted) setCardError(error.message); });
+    return () => controller.abort();
+  }, [selected, say, cardAttempt, loadCard]);
 
   // Branch (Connor): grow a new path from a lesson, then open its first new topic.
-  const { run } = useExpand();
+  const { run, activity: branchActivity, cancel: cancelBranch, retry: retryBranch } = useExpand();
   const missionsRef = useRef(missions);
   missionsRef.current = missions;
   const branch = async (t: string) => {
-    await run(t, "text");
+    if (!(await run(t, "text"))) return;
     setTimeout(() => {
       const first = missionsRef.current[0]?.slugs?.[0];
       if (first) dispatch({ t: "select", slug: first });
@@ -109,9 +121,8 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
 
         {/* 2. Hook */}
         <section className="border-b border-line px-4 py-3" aria-label="Summary">
-          {!card ? (
-            <div className="space-y-2" aria-label="Loading"><div className="scanbar h-3 w-11/12 bg-panel-2" /><div className="scanbar h-3 w-9/12 bg-panel-2" /><div className="scanbar h-3 w-10/12 bg-panel-2" /></div>
-          ) : (
+          <ActivityPanel activity={cardActivity} title="Understanding this concept" onCancel={cancelCard} onRetry={() => setCardAttempt((n) => n + 1)} compact />
+          {cardError ? <p className="mt-2 text-sm text-err" role="alert">{cardError}</p> : card ? (
             <p className="text-base text-text/90">
               {card.hook.map((s, i) => (
                 <span key={i}>
@@ -119,16 +130,17 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
                   {card.resource && i < 2 && <a href="#source" className="ml-0.5 align-super text-2xs text-muted underline-offset-2 hover:underline" aria-label="Source 1">[1]</a>}{" "}
                 </span>
               ))}
-              <Demo title="Hook text is seed copy." />
+              {card.demo && <span className="mt-2 block text-xs text-muted">Sample explanation · demonstration only</span>}
             </p>
-          )}
+          ) : null}
+          <ActivityPanel activity={branchActivity} title="Growing this learning path" onCancel={cancelBranch} onRetry={retryBranch} compact />
         </section>
 
         {/* 3. Learn: a lesson written for how you learn; branches grow new paths on the map */}
         <Teach key={c.slug} slug={c.slug} title={c.title} onBranch={branch} />
 
         {/* 4. Source: go deeper */}
-        {card?.resource && <Source r={card.resource} onWatch={() => { track(c.slug, "watch"); say("SYSTEM", `watched source → mastery +0.2 on ${c.slug}`, "ok"); }} />}
+        {card?.resource && <Source key={card.resource.url} r={card.resource} onWatch={() => { track(c.slug, "watch"); say("SYSTEM", `learner marked source complete on ${c.slug}`, "ok"); }} />}
 
         {/* 5. Explain it back */}
         <ExplainBack slug={c.slug} title={c.title} />
@@ -149,27 +161,30 @@ export default function Inspector({ onClose }: { onClose?: () => void }) {
 function Source({ r, onWatch }: { r: Resource; onWatch: () => void }) {
   const [v, setV] = useState<{ ok: boolean; method?: string; title?: string; thumbnail?: string } | null>(null);
   const [playing, setPlaying] = useState(false);
-  const watched = useRef(false);
+  const [watched, setWatched] = useState(false);
   const { say } = useStore();
   useEffect(() => {
     setV(null);
     setPlaying(false);
-    watched.current = false;
+    setWatched(false);
+    let active = true;
     verify(r.url).then((d) => {
+      if (!active) return;
       setV(d);
-      say(d.method === "oembed" ? "OEMBED" : "GROUND", `${r.provider} source ${d.ok ? "verified" : "DEAD → would fall back to article"} (${d.method ?? "?"})`, d.ok ? "ok" : "err", r.demo);
+      say(d.method === "oembed" ? "OEMBED" : "GROUND", `${r.provider} source ${d.ok ? "link reachable" : "link could not be verified"} (${d.method ?? "?"})`, d.ok ? "ok" : "err", r.demo);
     });
+    return () => { active = false; };
   }, [r.url, r.provider, r.demo, say]);
   const id = ytId(r.url);
   const watch = () => {
-    if (!watched.current) { watched.current = true; onWatch(); }
+    if (!watched) { setWatched(true); onWatch(); }
   };
   const start = r.startSeconds ? `${Math.floor(r.startSeconds / 60)}:${String(r.startSeconds % 60).padStart(2, "0")}` : null;
   const meta = (
     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
       <span>{r.provider} · {r.kind}</span>
-      {v?.ok && <span className="text-success">✓ Verified source</span>}
-      {v && !v.ok && <span className="text-err">Link unavailable</span>}
+      {v?.ok && <span className="text-success">✓ Link checked</span>}
+      {v && !v.ok && <span className="text-err">Couldn&apos;t check this link</span>}
     </p>
   );
   return (
@@ -189,7 +204,7 @@ function Source({ r, onWatch }: { r: Resource; onWatch: () => void }) {
             {meta}
           </>
         ) : (
-          <button className="group flex w-full items-center gap-3 text-left" onClick={() => { setPlaying(true); watch(); }} aria-label={`Play ${r.title}${start ? ` from ${start}` : ""}`}>
+          <button className="group flex w-full items-center gap-3 text-left" onClick={() => setPlaying(true)} aria-label={`Play ${r.title}${start ? ` from ${start}` : ""}`}>
             <span className="relative block aspect-video w-28 shrink-0 overflow-hidden border border-line bg-black">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={v?.thumbnail ?? `https://i.ytimg.com/vi/${id}/mqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-85 group-hover:opacity-100" />
@@ -203,11 +218,13 @@ function Source({ r, onWatch }: { r: Resource; onWatch: () => void }) {
           </button>
         )
       ) : (
-        <a href={r.url} target="_blank" rel="noopener noreferrer" onClick={watch} className="block border border-line bg-panel-2 px-3 py-2.5 hover:border-dim">
+        <a href={r.url} target="_blank" rel="noopener noreferrer" className="block border border-line bg-panel-2 px-3 py-2.5 hover:border-dim">
           <span className="block text-sm">{r.title} <span className="text-muted" aria-hidden>↗</span></span>
           {meta}
         </a>
       )}
+      {r.demo && <p className="mt-2 text-xs text-muted">Sample resource</p>}
+      <button className="btn mt-3 w-full" onClick={watch} disabled={watched}>{watched ? "Marked complete" : "I finished this source"}</button>
     </section>
   );
 }
@@ -245,39 +262,59 @@ function Diagram({ code, title }: { code: string; title: string }) {
 }
 
 function ExplainBack({ slug, title }: { slug: string; title: string }) {
-  const { track, say } = useStore();
+  const { track, say, refreshSnapshot, dataMode } = useStore();
   const rec = useRecorder(20_000);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
-  const [result, setResult] = useState<{ transcript: string; score: number; feedback: string; demo: boolean } | null>(null);
+  const [result, setResult] = useState<{ transcript: string; score: number | null; feedback: string; demo: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { setResult(null); setOpen(false); setErr(null); setTyped(""); }, [slug]);
+  const [grading, setGrading] = useState(false);
+  const feedbackStream = useAIStream();
+  const voiceStream = useAIStream();
+  const lastExplanation = useRef("");
+  const lastAudio = useRef<Blob | null>(null);
+  const gradingController = useRef<AbortController | null>(null);
+  const activeSlug = useRef(slug); activeSlug.current = slug;
+  useEffect(() => {
+    setResult(null); setOpen(false); setErr(null); setTyped(""); setGrading(false);
+    return () => gradingController.current?.abort();
+  }, [slug]);
 
   const grade = async (transcript: string, demo: boolean) => {
+    if (grading || activeSlug.current !== slug) return;
+    setGrading(true); setErr(null);
+    lastExplanation.current = transcript;
+    const controller = new AbortController(); gradingController.current = controller;
+    try {
     say("GRADE", `rubric 0–3 on "${transcript.slice(0, 40)}…"`, "info", demo);
-    const r = await fetch("/api/explain", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, transcript }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error);
+    const d = await feedbackStream.run<{ score: number | null; feedback: string; demo: boolean; persisted?: boolean }>("/api/explain", { method: "POST", headers: { "idempotency-key": mutationKey() }, body: JSON.stringify({ slug, transcript }), signal: controller.signal });
+    if (controller.signal.aborted || activeSlug.current !== slug) return;
     setResult({ transcript, ...d });
-    track(slug, "explain", { score: d.score });
-    say("GRADE", `${d.score}/3 → mastery +${((d.score / 3) * 0.5).toFixed(2)} · "${d.feedback}"`, "ok", d.demo);
+    if (d.persisted) await refreshSnapshot();
+    else if (dataMode === "demo" && typeof d.score === "number") track(slug, "explain", { score: d.score });
+    say("GRADE", typeof d.score === "number" ? `${d.score}/3 · "${d.feedback}"` : "Ungraded rehearsal feedback; no mastery credit", "ok", d.demo);
+    } finally { if (gradingController.current === controller) setGrading(false); }
   };
 
+  const processVoice = async (blob: Blob) => {
+    lastAudio.current = blob; rec.setState("processing"); setErr(null);
+    try {
+      say("TRANSCRIBE", `explain-back clip ${(blob.size / 1024).toFixed(0)}KB → Voice Transcribe`);
+      const t = await transcribeBlob(blob, "explain", (path, init) => voiceStream.run(path, init));
+      say("TRANSCRIBE", `${t.ms}ms: "${t.text.slice(0, 50)}…"`, "ok", t.demo);
+      await grade(t.text, t.demo);
+    } catch (e) {
+      if (!(e instanceof Error && e.name === "AbortError") && activeSlug.current === slug) setErr((e as Error).message);
+    } finally {
+      rec.setState("idle");
+    }
+  };
   const onMic = async () => {
     setErr(null);
     if (rec.state === "recording") return rec.stop();
     const blob = await rec.start();
     if (!blob) return setErr("Mic blocked. You can type instead.");
-    try {
-      say("TRANSCRIBE", `explain-back clip ${(blob.size / 1024).toFixed(0)}KB → Voice Transcribe`);
-      const t = await transcribeBlob(blob, "explain");
-      say("TRANSCRIBE", `${t.ms}ms: "${t.text.slice(0, 50)}…"`, "ok", t.demo);
-      await grade(t.text, t.demo);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      rec.setState("idle");
-    }
+    await processVoice(blob);
   };
 
   return (
@@ -286,12 +323,13 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
         <h4 id="explain-h" className="label">Explain it back</h4>
         <span className="text-xs text-muted">Optional · never a quiz</span>
       </div>
+      <ActivityPanel activity={voiceStream.activity} title="Transcribing your explanation" onCancel={voiceStream.cancel} onRetry={() => { if (lastAudio.current) void processVoice(lastAudio.current); }} compact />
+      <ActivityPanel activity={feedbackStream.activity} title="Checking your explanation" onCancel={feedbackStream.cancel} onRetry={() => void grade(lastExplanation.current, dataMode === "demo").catch((e: Error) => setErr(e.message))} compact />
       {result ? (
         <div className="enter" aria-live="polite">
-          <div className="mb-2 flex items-center gap-1" aria-label={`${result.score} of 3`}>
-            {[0, 1, 2].map((i) => <NodeIcon key={i} state={i < result.score ? "understood" : "seeded"} size={20} />)}
-            <span className="display ml-2 text-sm">{result.score}/3</span>
-            <span className="ml-auto"><Demo title="Graded by a demo heuristic." /></span>
+          <div className="mb-2 flex items-center gap-1" aria-label={typeof result.score === "number" ? `${result.score} of 3` : "Ungraded feedback"}>
+            {typeof result.score === "number" ? <><span className="flex gap-1">{[0, 1, 2].map((i) => <NodeIcon key={i} state={i < result.score! ? "understood" : "seeded"} size={20} />)}</span><span className="display ml-2 text-sm">{result.score}/3</span></> : <span className="text-xs text-muted">Ungraded · no progress credit</span>}
+            {result.demo && <span className="ml-auto text-xs text-muted">Sample feedback</span>}
           </div>
           <p className="text-sm text-text/90">{result.feedback}</p>
           <p className="mt-2 border-l-2 border-line-2 pl-2 text-xs italic text-muted">&ldquo;{result.transcript}&rdquo;</p>
@@ -300,7 +338,7 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
         <>
           <p className="mb-2.5 text-sm text-muted">Say what {title.toLowerCase()} is in your own words. About 20 seconds. This is how a topic becomes understood.</p>
           <div className="flex items-center gap-2">
-            <button className={`btn ${rec.state === "recording" ? "btn-primary" : ""}`} onClick={onMic} disabled={rec.state === "processing"}>
+            <button className={`btn ${rec.state === "recording" ? "btn-primary" : ""}`} onClick={onMic} disabled={rec.state === "processing" || grading}>
               {rec.state === "recording" ? `■ Stop · ${Math.floor((20000 - rec.elapsed) / 1000)}s` : rec.state === "processing" ? "Checking…" : "Explain by voice"}
             </button>
             {rec.state === "recording" && (
@@ -313,9 +351,9 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
             )}
           </div>
           {open && (
-            <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) grade(typed.trim(), true).catch((x) => setErr(x.message)); }}>
+            <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) grade(typed.trim(), dataMode === "demo").catch((x: Error) => { if (x.name !== "AbortError" && activeSlug.current === slug) setErr(x.message); }); }}>
               <input className="field" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="It's when…" maxLength={3000} aria-label={`Explain ${title} in your own words`} autoFocus />
-              <button className="btn">Send</button>
+              <button className="btn" disabled={grading || !typed.trim()}>{grading ? "Checking…" : "Send"}</button>
             </form>
           )}
           {err && <p className="mt-2 text-xs text-err" role="alert">{err}</p>}
@@ -328,7 +366,7 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
 /** Cold start (Connor): you don't need the right question. Presets send exactly what they say. */
 const STARTS = ["Learn AI from zero", "Why AI needs special chips", "How chatbots work"];
 function StartHere() {
-  const { run, busy } = useExpand();
+  const { run, busy, error, activity, cancel, retry } = useExpand();
   return (
     <div className="mb-5">
       <h3 className="label mb-2">Start here</h3>
@@ -339,6 +377,8 @@ function StartHere() {
           </button>
         ))}
       </div>
+      {error && <p className="mt-2 text-sm text-err" role="alert">{error}</p>}
+      <ActivityPanel activity={activity} title="Growing your first learning path" onCancel={cancel} onRetry={retry} compact />
     </div>
   );
 }
@@ -410,15 +450,27 @@ function Line({ arrow, dotted, lit }: { arrow?: boolean; dotted?: boolean; lit?:
 
 /** A suggested topic: not on the map yet. Add it, or say not now (the map stops suggesting it). */
 function SuggestionCard({ s }: { s: Suggestion }) {
-  const { dispatch, track, concepts } = useStore();
+  const { dispatch, track, concepts, dataMode, refreshSnapshot } = useStore();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const anchorTitle = concepts[s.anchor]?.title ?? s.anchor;
   const close = () => dispatch({ t: "select", slug: null });
-  const add = () => {
+  const add = async () => {
+    setBusy(true); setError(null);
+    try {
     const anchor = concepts[s.anchor];
-    dispatch({ t: "concept", c: { ...(CATALOG[s.slug] ?? {}), slug: s.slug, title: s.title, hook: s.hook, domain: anchor?.domain ?? "ai-tech" }, edge: { src: s.anchor, dst: s.slug, kind: s.kind } });
-    track(s.slug, "seed", { via: "suggestion" });
+    const concept = { ...(CATALOG[s.slug] ?? {}), slug: s.slug, title: s.title, hook: s.hook, domain: anchor?.domain ?? "ai-tech" };
+    if (dataMode === "local") {
+      await localJson("/api/data/concepts", { method: "POST", body: JSON.stringify({ concept: { ...concept, domain: "ai-tech" }, edge: { from: s.anchor, kind: s.kind } }) });
+      await refreshSnapshot();
+    } else {
+      dispatch({ t: "concept", c: concept, edge: { src: s.anchor, dst: s.slug, kind: s.kind } });
+      await track(s.slug, "seed", { via: "suggestion" });
+    }
     dispatch({ t: "note", text: `Added ${s.title} from a suggestion` });
     dispatch({ t: "select", slug: s.slug });
+    } catch (e) { setError(e instanceof Error ? e.message : "Couldn't add this topic."); }
+    finally { setBusy(false); }
   };
   const notNow = () => { dispatch({ t: "dismiss", slug: s.slug }); close(); };
   return (
@@ -447,9 +499,11 @@ function SuggestionCard({ s }: { s: Suggestion }) {
           <p className="text-base text-text/90">{s.hook}</p>
         </section>
         <div className="flex gap-2 px-4 py-3">
-          <button className="btn btn-primary flex-1" onClick={add}>Add to my map</button>
-          <button className="btn btn-ghost" onClick={notNow} title="The map won't suggest this again">Not now</button>
+          <button className="btn btn-primary flex-1" onClick={() => void add()} disabled={busy}>{busy ? "Saving…" : "Add to my map"}</button>
+          <button className="btn btn-ghost" onClick={notNow} disabled={busy} title="The map won't suggest this again">Not now</button>
         </div>
+        {error && <p className="px-4 pb-3 text-sm text-err" role="alert">{error}</p>}
+        {busy && <div className="px-4 pb-3"><OperationStatus label="Saving this topic" detail="Adding the concept and connection to your local map, then reloading saved state." /></div>}
       </div>
     </div>
   );

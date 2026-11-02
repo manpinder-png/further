@@ -15,19 +15,27 @@ import CommandBar from "@/components/mission/CommandBar";
 import MatchModal from "@/components/mission/MatchModal";
 import TimeLapse, { type TL } from "@/components/mission/TimeLapse";
 import { CloseIcon, useReducedMotion } from "@/components/ui/bits";
+import { OperationStatus } from "@/components/activity/ActivityPanel";
 
 const KnowledgeMap = dynamic(() => import("@/components/map/KnowledgeMap"), { ssr: false });
 const BANNER_KEY = "further:sample-banner-dismissed";
 const PANE_KEY = "further:pane:collapsed";
 
 export default function MapScreen() {
-  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey, rail, profile } = useStore();
+  const { ready, concepts, edges, nodes, events, explorers, selected, dispatch, say, missions, match, fitKey, rail, profile, dataMode, modelMode, loadingError, saveError, pendingWrites, refreshSnapshot, retryPendingWrites } = useStore();
   const stats = useMapStats();
   const suggestions = useSuggestions();
   const reduced = useReducedMotion();
   const { run } = useExpand();
   const runMatch = useMatchJob();
   const [tl, setTl] = useState<TL>({ on: false, t: 0, playing: false });
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobile(query.matches);
+    update(); query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   // E8: captures from a connected app land on the open map.
   useInbox((text, source) => {
@@ -46,7 +54,7 @@ export default function MapScreen() {
     const b = baseline.current;
     const newExplains = explains - b.explains;
     if (match || tries.current >= 3 || (doneCount === b.done && newExplains <= 0)) return;
-    const t = setTimeout(() => { tries.current++; runMatch({ quietIfNone: true }); }, newExplains > 0 ? 2500 : 9000);
+    const t = setTimeout(() => { tries.current++; void runMatch({ quietIfNone: true }).catch(() => say("MATCH", "Peer search is unavailable. You can keep learning and retry shortly.", "warn")); }, newExplains > 0 ? 2500 : 9000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doneCount, explains, ready]);
@@ -70,7 +78,7 @@ export default function MapScreen() {
   useEffect(() => {
     try { setBannerOff(localStorage.getItem(BANNER_KEY) === "1"); } catch { setBannerOff(false); }
   }, []);
-  const sample = explorers.some((e) => e.demo);
+  const sample = dataMode === "demo";
   const dismissBanner = () => {
     setBannerOff(true);
     try { localStorage.setItem(BANNER_KEY, "1"); } catch { /* ignore */ }
@@ -110,8 +118,22 @@ export default function MapScreen() {
   const shownNodes = useMemo(() => (tl.on ? replay(events, tl.t) : nodes), [tl.on, tl.t, events, nodes]);
   const conceptList = useMemo(() => Object.values(concepts), [concepts]);
 
+  if (!ready) return (
+    <div className="grid-bg flex h-full items-center justify-center p-6">
+      <div className="max-w-md rounded-xl border border-line bg-panel p-6 text-center" aria-live="polite">
+        <h1 className="text-xl font-semibold">{loadingError ? "Your map couldn't load" : "Opening your map…"}</h1>
+        <p className="mt-3 text-sm text-muted">{loadingError ?? "Getting your saved topics and recent learning together."}</p>
+        {!loadingError && <div className="mt-3"><OperationStatus label="Reading your local workspace" detail="Initializing your browser identity and loading your map, profile and saved quests. No model call is needed." /></div>}
+        {loadingError && <button className="btn btn-primary mt-4" onClick={() => void refreshSnapshot().catch(() => undefined)}>Try loading again</button>}
+      </div>
+    </div>
+  );
+
   return (
     <div className="absolute inset-0 flex flex-col">
+      {modelMode === "fixture" && dataMode === "local" && <p className="shrink-0 border-b border-line bg-panel px-4 py-2 text-xs text-muted" role="status">Rehearsal AI responses are enabled. Your local profiles and conversations are still saved.</p>}
+      {(saveError || loadingError) && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-err/40 bg-panel px-4 py-2 text-sm" role="alert"><span className="flex-1 text-err">{saveError ?? loadingError}</span>{saveError && <button className="btn" disabled={pendingWrites > 0} onClick={() => void retryPendingWrites()}>Retry saving</button>}<button className="btn btn-ghost" onClick={() => void refreshSnapshot().catch(() => undefined)}>Reload saved map</button></div>}
+      {pendingWrites > 0 && <div className="shrink-0 px-4 py-1"><OperationStatus label="Saving your progress" detail={`${pendingWrites} local update${pendingWrites === 1 ? "" : "s"} awaiting confirmation. Failed writes can be retried without duplicates.`} /></div>}
       <div className="relative grid min-h-0 flex-1 md:grid-cols-[auto_minmax(0,1fr)_360px] xl:grid-cols-[auto_minmax(0,1fr)_380px]">
         <aside className={`hidden min-h-0 border-r border-line bg-panel transition-[width] duration-200 md:block ${collapsed ? "w-14" : "w-[300px] xl:w-[320px]"}`} aria-label="Your journey">
           <LeftRail collapsed={collapsed} onCollapse={collapse} />
@@ -143,7 +165,7 @@ export default function MapScreen() {
                 </button>
               </div>
             )}
-            {!tl.on && <span className="bg-black/70 px-2 py-0.5 text-sm font-medium text-text">AI &amp; Tech</span>}
+            {!tl.on && <span className="bg-black/70 px-2 py-0.5 text-sm font-medium text-text">{sample ? "Sample knowledge map" : "Your knowledge map"}</span>}
           </div>
           {/* Narrated changes */}
           {!tl.on && captions.length > 0 && (
@@ -168,7 +190,7 @@ export default function MapScreen() {
         </section>
 
         <aside className="hidden min-h-0 border-l border-line bg-panel md:block" aria-label="Concept details">
-          <Inspector />
+          {!mobile && <Inspector />}
         </aside>
 
         {/* Drawer: journey pane on phones */}
@@ -182,7 +204,7 @@ export default function MapScreen() {
         )}
 
         {/* Bottom sheet: inspector below 768px */}
-        {selected && (
+        {selected && mobile && (
           <div className="enter absolute inset-x-0 bottom-0 z-30 h-[78%] border-t border-line-2 bg-panel shadow-[0_-12px_40px_rgba(0,0,0,.6)] flex flex-col md:hidden" role="dialog" aria-label="Concept details">
             <div className="mx-auto mt-1.5 h-1 w-10 shrink-0 bg-line-2" aria-hidden />
             <div className="min-h-0 flex-1"><Inspector /></div>

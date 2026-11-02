@@ -1,34 +1,34 @@
-// F4: Explain-it-back grading, 0–3 rubric, one sentence of feedback. Never a quiz. Owner: Connor.
+import { randomUUID } from "node:crypto";
 import { ExplainRequest, ExplainResult } from "@/lib/schemas";
-import { chat, GRADE_SYSTEM, hasMeta } from "@/lib/server/meta";
-import { CATALOG } from "@/lib/demo/seed";
-import { captureError } from "@/lib/server/observability";
+import { invokeAgent } from "@/domains/backend/agents";
+import { body, handle, HttpError, idempotencyKey, json } from "@/domains/backend/http";
+import { requireActor } from "@/domains/backend/identity";
+import { getRepository } from "@/domains/data/repository";
+import { withProgress } from "@/domains/backend/streaming";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const p = ExplainRequest.safeParse(await req.json().catch(() => null));
-  if (!p.success) return Response.json({ error: "Invalid request" }, { status: 400 });
-  const { slug, transcript } = p.data;
-  const title = CATALOG[slug]?.title ?? slug;
-  try {
-    if (hasMeta()) {
-      const raw = await chat([{ role: "system", content: GRADE_SYSTEM }, { role: "user", content: `Concept: ${title}\nExplanation: ${transcript}` }], { json: true, maxTokens: 1500 });
-      const s = raw.indexOf("{"), e2 = raw.lastIndexOf("}");
-      if (s < 0 || e2 <= s) throw new Error("Grader returned no JSON");
-      const r = ExplainResult.parse(JSON.parse(raw.slice(s, e2 + 1)));
-      return Response.json({ ...r, demo: false });
-    }
-    // DEMO heuristic: length + mechanism words. Clearly labeled in the UI.
-    const words = transcript.split(/\s+/).length;
-    const mech = /(multipl|sum|weight|parallel|at the same time|because|so that)/gi;
-    const hits = new Set((transcript.match(mech) ?? []).map((m) => m.toLowerCase())).size;
-    const score = Math.min(3, (words > 12 ? 1 : 0) + Math.min(2, hits >= 3 ? 2 : hits >= 1 ? 1 : 0));
-    const feedback = score === 3 ? "You nailed the mechanism and why GPUs fit it. Next: what limits it?" : score === 2 ? "Good mechanism. Add why it matters for speed." : "You've named it. Try describing what actually happens step by step.";
-    await new Promise((r) => setTimeout(r, 500));
-    return Response.json({ score, feedback, demo: true });
-  } catch (err) {
-    captureError(err, { route: "explain" });
-    return Response.json({ error: "Grader unavailable" }, { status: 502 });
-  }
+  return handle(req, async () => {
+    const actorId = await requireActor(req);
+    const { slug, transcript } = ExplainRequest.parse(await body(req));
+    const fixture = req.headers.get("x-further-demo") === "true";
+    const repo = await getRepository();
+    if (!fixture && !(await repo.getSnapshot(actorId)).concepts.some(c => c.slug === slug)) throw new HttpError(404, "Open a topic from your map before explaining it.");
+    const key=`explain:${idempotencyKey(req,randomUUID())}`;
+    return withProgress(req,"learning-companion",async progress=>{
+    const result = await invokeAgent(actorId, "learning-companion", {
+      mode: "explain-back", concept: slug, message: transcript,
+    }, { idempotencyKey:key, signal:progress.signal,onEvent:progress.onEvent, fixture });
+    // Rehearsal feedback is deliberately ungraded and never becomes mastery evidence.
+    if (result.mode === "fixture") return { score: null, feedback: result.data.body, demo: true, persisted: false, runId: result.runId };
+    const grade = ExplainResult.parse({ score: result.data.score, feedback: result.data.body });
+    progress.activity("saving","Saving your explanation feedback.");
+    await repo.recordEvent(actorId, {
+      slug, kind: "explain", idempotencyKey: `explain:${result.runId}`,
+      payload: { score: grade.score, feedback: grade.feedback, source: "agent", model: result.model, provider: result.provider, runId: result.runId, schemaVersion: 1 },
+    });
+    return { ...grade, demo: false, persisted: true, runId: result.runId };
+    },{jsonResponse:result=>json(result,200,result.persisted?{"x-further-persisted":"true"}:{})});
+  });
 }

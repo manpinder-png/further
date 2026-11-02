@@ -12,6 +12,7 @@ import { learnerModel } from "@/lib/learn";
 import { useMatchJob } from "@/lib/client/hooks";
 import { BUILDER_VIEW } from "@/lib/builder";
 import AgentLog from "@/components/builder/AgentLog";
+import { OperationStatus } from "@/components/activity/ActivityPanel";
 
 type SectionId = "progress" | "path" | "quests" | "activity" | "people" | "sessions";
 const SECTIONS: { id: SectionId; label: string }[] = [
@@ -164,7 +165,7 @@ function Progress() {
         ))}
       </dl>
       <p className="mt-3 text-xs text-muted">
-        How you learn: <span className="text-text">{STYLE[model.style]}, {PACE[model.pace]}</span>
+        {events.some((e) => e.kind === "watch" || e.kind === "explain") ? <>Recent learning pattern: <span className="text-text">{STYLE[model.style]}, {PACE[model.pace]}</span></> : "Your learning pattern will develop as you explore."}
       </p>
       <p className="mt-1 text-xs text-muted">
         This week: <span className="text-text">{plural(Math.max(0, week.understood), "topic")} understood</span>, {plural(Math.max(0, week.topics), "new topic")}
@@ -279,7 +280,7 @@ function useActivity(): Item[] {
         continue;
       }
       if (e.kind === "explain") out.push({ key: `e${e.id}`, at: e.at, node: <>Explained {em(e.slug)} in your own words</> });
-      else if (e.kind === "watch") out.push({ key: `e${e.id}`, at: e.at, node: <>Watched a source on {em(e.slug)}</> });
+      else if (e.kind === "watch") out.push({ key: `e${e.id}`, at: e.at, node: <>Completed learning on {em(e.slug)}</> });
       else if (e.kind === "session") out.push({ key: `e${e.id}`, at: e.at, node: <>Learned {em(e.slug)} with {personName(String(e.payload?.with ?? "a peer"))}</> });
     }
     flush();
@@ -307,10 +308,13 @@ function People() {
   const color = (name: string) => explorers.find((e) => e.name === name)?.color ?? "#85858d";
   const runMatch = useMatchJob();
   const [looking, setLooking] = useState<"idle" | "looking" | "none">("idle");
+  const [error, setError] = useState<string | null>(null);
   const find = async () => {
-    setLooking("looking");
-    const m = await runMatch({ quietIfNone: true });
-    setLooking(m ? "idle" : "none");
+    setLooking("looking"); setError(null);
+    try {
+      const m = await runMatch({ quietIfNone: true });
+      setLooking(m ? "idle" : "none");
+    } catch { setError("Couldn't search for a peer. Please try again."); setLooking("idle"); }
   };
   return (
     <div className="space-y-3">
@@ -335,8 +339,11 @@ function People() {
       </div>
       <div>
         <button className="btn mb-2 w-full" onClick={find} disabled={looking === "looking"}>{looking === "looking" ? "Looking…" : "Find someone to learn with"}</button>
+        {looking === "looking" && <OperationStatus label="Checking available learners" detail="Comparing saved concepts, language, available time and matching consent. This is local eligibility ranking, not a model response." />}
         {looking === "none" && <p className="mb-2 text-xs text-muted">No one a step ahead right now. Try again after you learn something new.</p>}
+        {error && <p className="mb-2 text-xs text-err" role="alert">{error}</p>}
         <h4 className="mb-1 text-xs text-muted">Learning now</h4>
+        {!explorers.length && <p className="text-sm text-muted">No other learners are available right now.</p>}
         <ul>
           {explorers.map((e) => {
             const at = e.activeConcepts[0];
@@ -367,7 +374,7 @@ function useSessions() {
     for (const e of events) {
       if (e.kind !== "session") continue;
       const peer = personName(String(e.payload?.with ?? "a peer"));
-      const key = `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`;
+      const key = String(e.payload?.sessionId ?? `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`);
       const s = m.get(key) ?? { peer, topics: [], at: e.at };
       s.topics.push(concepts[e.slug]?.title ?? CATALOG[e.slug]?.title ?? e.slug);
       s.at = Math.max(s.at, e.at);

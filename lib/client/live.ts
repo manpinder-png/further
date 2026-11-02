@@ -1,72 +1,43 @@
 "use client";
 
-// Anonymous Supabase auth gives the MVP a real auth.uid() without asking a
-// first-time explorer to create an account before they can try the map. Enable
-// Anonymous Sign-Ins in Supabase Auth; if it is disabled, callers fall back to
-// the visibly labelled demo path.
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const STORAGE = "further.supabase.session.v1";
+import type { DataMode, LocalIdentity, LocalProfile, MapSnapshot, RoomSnapshot } from "@/domains/ui/contracts";
+import { mutationKey, writableProfile } from "@/domains/ui/contracts";
 
-type Session = { access_token: string; refresh_token?: string; expires_at?: number };
-
-function saved(): Session | null {
-  try { return JSON.parse(localStorage.getItem(STORAGE) ?? "null") as Session | null; } catch { return null; }
+export const MODE_KEY = "further:data-mode:v2";
+export const IDENTITY_CHANGE_KEY = "further:identity-change:v1";
+export function getDataMode(): DataMode {
+  if (typeof window === "undefined") return "local";
+  try { return localStorage.getItem(MODE_KEY) === "demo" ? "demo" : "local"; } catch { return "local"; }
 }
-
-function save(session: Session) { localStorage.setItem(STORAGE, JSON.stringify(session)); }
-
-export function liveConfigured() { return Boolean(URL && KEY); }
-
-export async function accessToken(): Promise<string | null> {
-  if (!URL || !KEY) return null;
-  const current = saved();
-  if (current?.access_token && (!current.expires_at || current.expires_at * 1000 > Date.now() + 60_000)) return current.access_token;
-  const res = await fetch(`${URL}/auth/v1/token?grant_type=anonymous`, {
-    method: "POST",
-    headers: { apikey: KEY, "content-type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  if (!res.ok) return null;
-  const next = await res.json() as Session;
-  if (!next.access_token) return null;
-  save(next);
-  return next.access_token;
+export function chooseDataMode(mode: DataMode) {
+  localStorage.setItem(MODE_KEY, mode);
 }
-
-async function api(path: string, init: RequestInit = {}) {
-  const token = await accessToken();
-  if (!token) throw new Error("Live account unavailable");
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
-  headers.set("content-type", "application/json");
-  const res = await fetch(path, {
-    ...init,
-    headers,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `Request failed (${res.status})`);
-  }
-  return res.json();
-}
+/** Kept as a compatibility seam; this now means persistent local data, not cloud configuration. */
+export function liveConfigured() { return getDataMode() === "local"; }
 
 export async function liveFetch(path: string, init: RequestInit = {}) {
-  const token = await accessToken();
-  if (!token) throw new Error("Live account unavailable");
   const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
-  headers.set("content-type", "application/json");
-  return fetch(path, {
-    ...init,
-    headers,
-  });
+  if (typeof init.body === "string") headers.set("content-type", "application/json");
+  if (getDataMode() === "demo") headers.set("x-further-demo", "true");
+  return fetch(path, { ...init, credentials: "same-origin", headers });
 }
 
-export const hydrateLive = () => api("/api/data/bootstrap");
-export const persistEvent = (slug: string, kind: string, payload?: Record<string, unknown>) =>
-  api("/api/data/events", { method: "POST", body: JSON.stringify({ slug, kind, payload }) });
-export const persistConcept = (concept: { slug: string; title: string; hook: string; domain: "ai-tech" }, edge?: { from: string; kind: string }) =>
-  api("/api/data/concepts", { method: "POST", body: JSON.stringify({ concept, edge }) });
-export const persistProfile = (profile: object) =>
-  api("/api/data/profile", { method: "PATCH", body: JSON.stringify(profile) });
+export async function localJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await liveFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body as T;
+}
+export const localIdentity = () => localJson<LocalIdentity>("/api/local/identity");
+export const changeIdentity = async (selection: { displayName: string } | { userId: string }) => {
+  const identity = await localJson<LocalIdentity>("/api/local/identity", { method: "POST", body: JSON.stringify(selection) });
+  // The cookie changes for every tab in this browser. Clear their old actor view.
+  try { localStorage.setItem(IDENTITY_CHANGE_KEY, mutationKey()); } catch { /* browser storage may be disabled */ }
+  return identity;
+};
+export const hydrateLive = () => localJson<MapSnapshot>("/api/data/bootstrap");
+export const persistEvent = (slug: string, kind: string, payload?: Record<string, unknown>, idempotencyKey = mutationKey()) =>
+  localJson("/api/data/events", { method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify({ slug, kind, payload, idempotencyKey }) });
+export const persistProfile = (profile: LocalProfile) =>
+  localJson("/api/data/profile", { method: "PATCH", body: JSON.stringify(writableProfile(profile)) });
+export const getRoom = (id: string) => localJson<RoomSnapshot>(`/api/local/sessions/${encodeURIComponent(id)}`);

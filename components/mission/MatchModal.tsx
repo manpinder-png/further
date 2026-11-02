@@ -8,17 +8,20 @@ import { CATALOG } from "@/lib/demo/seed";
 import { HANDSHAKE_MS } from "@/lib/matching";
 import { Demo, Head, useReducedMotion } from "@/components/ui/bits";
 import { BUILDER_VIEW } from "@/lib/builder";
-import { liveConfigured, liveFetch } from "@/lib/client/live";
+import { liveFetch } from "@/lib/client/live";
+import { OperationStatus } from "@/components/activity/ActivityPanel";
 
 // Screen-reader announcements at these marks, not every second.
 const MARKS = [60, 45, 30, 15, 10, 5];
 
 export default function MatchModal() {
-  const { match, dispatch, say } = useStore();
+  const { match, dispatch, say, concepts } = useStore();
   const router = useRouter();
   const reduced = useReducedMotion();
   const [left, setLeft] = useState(HANDSHAKE_MS);
   const [announce, setAnnounce] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!match || match.status === "accepted") return;
@@ -38,7 +41,7 @@ export default function MatchModal() {
 
   // Live (Connor): poll the durable request while waiting for the other person.
   useEffect(() => {
-    if (!match || match.peer.demo || match.status !== "waiting" || !liveConfigured()) return;
+    if (!match || match.peer.demo || !["pending", "waiting"].includes(match.status)) return;
     let alive = true;
     const check = async () => {
       try {
@@ -61,43 +64,33 @@ export default function MatchModal() {
     return () => { alive = false; clearInterval(iv); };
   }, [match, dispatch, router, say]);
 
-  if (!match || match.status === "accepted") return null;
-  const title = (s: string) => CATALOG[s]?.title ?? s;
+  if (!match || match.status === "accepted" || match.peer.demo) return null;
+  const title = (s: string) => concepts[s]?.title ?? CATALOG[s]?.title ?? s;
   const secs = Math.max(0, Math.ceil(left / 1000));
   const frac = reduced ? 1 : Math.max(0, left / HANDSHAKE_MS);
   const R = 26, C = 2 * Math.PI * R;
 
-  const accept = async () => {
-    const live = liveConfigured() && !match.peer.demo;
-    const r = live
-      ? await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ requestId: match.id, decision: "accept" }) })
-      : await fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "accept" }) });
-    const result = await r.json().catch(() => ({}));
-    if (!r.ok) { say("MATCH", result.error ?? "Couldn't accept match", "err"); return; }
-    dispatch({ t: "match", m: { ...match, status: "waiting" } });
-    say("MATCH", `you accepted · waiting for ${match.peer.name}`);
-    if (live && result.status === "accepted") {
-      dispatch({ t: "note", text: `Matched with ${match.peer.name} on ${title(match.concept)}` });
-      dispatch({ t: "match", m: { ...match, status: "accepted", sessionId: result.session_id } });
-      router.push(`/session?m=${match.id}${result.session_id ? `&s=${result.session_id}` : ""}`);
-      return;
-    }
-    if (live) return; // the poll above picks up the other person's answer
-    // DEMO: the sample peer accepts after a beat. Live: Supabase update on match_requests.
-    setTimeout(() => {
-      say("MATCH", `${match.peer.name} accepted · both in → session`, "ok", match.peer.demo);
-      dispatch({ t: "note", text: `Matched with ${match.peer.name} on ${title(match.concept)}` });
-      dispatch({ t: "match", m: { ...match, status: "accepted" } });
-      router.push(`/session?m=${match.id}`);
-    }, 1800);
-  };
-  const decline = () => {
-    const send = liveConfigured() && !match.peer.demo
-      ? liveFetch("/api/match", { method: "POST", body: JSON.stringify({ requestId: match.id, decision: "decline" }) })
-      : fetch("/api/match", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: match.id, decision: "decline" }) });
-    void send.catch(() => undefined);
-    say("MATCH", `declined ${match.peer.name} · won't re-match for 24h`, "warn");
-    dispatch({ t: "match", m: null });
+  const answer = async (decision: "accept" | "decline") => {
+    setBusy(true); setError(null);
+    try {
+      const response = await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ requestId: match.id, decision }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Couldn't save your answer.");
+      if (decision === "decline" || ["declined", "expired"].includes(result.status)) {
+        dispatch({ t: "match", m: null });
+        return;
+      }
+      const sessionId = result.sessionId ?? result.session_id;
+      if (result.status === "accepted" && sessionId) {
+        dispatch({ t: "note", text: `Matched with ${match.peer.name} on ${title(match.concept)}` });
+        dispatch({ t: "match", m: { ...match, status: "accepted", sessionId } });
+        router.push(`/session?s=${encodeURIComponent(sessionId)}`);
+        return;
+      }
+      dispatch({ t: "match", m: { ...match, status: "waiting" } });
+      say("MATCH", `You accepted. Waiting for ${match.peer.name}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Couldn't save your answer."); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -136,13 +129,15 @@ export default function MatchModal() {
             <div className="text-sm">{title(match.peerStrong)}</div>
           </div>
         </div>
+        {error && <p className="px-4 pb-3 text-sm text-err" role="alert">{error}</p>}
+        {busy && <div className="px-4 pb-3"><OperationStatus label="Saving your answer" detail="Waiting for the local matching service to confirm your choice." /></div>}
         <div className="flex gap-2 border-t border-line p-3">
           {match.status === "waiting" ? (
-            <div className="scanbar flex min-h-11 flex-1 items-center justify-center border border-line text-sm text-muted" aria-live="polite">Waiting for {match.peer.name}…</div>
+            <><div className="flex-1"><OperationStatus label={`Waiting for ${match.peer.name}`} detail="Your acceptance is saved. The conversation opens only when they also accept; you can cancel this invitation." /></div><button className="btn" disabled={busy} onClick={() => void answer("decline")}>Cancel</button></>
           ) : (
             <>
-              <button className="btn px-4 sm:flex-1" onClick={decline}>Not now</button>
-              <button className="btn btn-primary flex-1 whitespace-nowrap px-3" onClick={accept} autoFocus>Learn together · 10 min</button>
+              <button className="btn px-4 sm:flex-1" disabled={busy} onClick={() => void answer("decline")}>Not now</button>
+              <button className="btn btn-primary flex-1 whitespace-nowrap px-3" disabled={busy} onClick={() => void answer("accept")} autoFocus>{busy ? "Saving…" : "Learn together · 10 min"}</button>
             </>
           )}
         </div>

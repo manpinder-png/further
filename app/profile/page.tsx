@@ -5,27 +5,49 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMapStats, useStore } from "@/lib/client/store";
-import { Demo, NodeIcon } from "@/components/ui/bits";
+import { NodeIcon } from "@/components/ui/bits";
 import { STATE_LABEL } from "@/lib/client/format";
 import { BUILDER_VIEW } from "@/lib/builder";
 import { liveConfigured, persistProfile } from "@/lib/client/live";
-
-// TODO(Connor): fetch the user's token from the server; production tokens are random per user, stored hashed.
-const TOKEN = "fur_demo_7f3a9c";
-const masked = (t: string) => `fur_••••${t.slice(-4)}`;
+import LocalIdentity from "@/components/builder/LocalIdentity";
+import { OperationStatus } from "@/components/activity/ActivityPanel";
 
 export default function ProfilePage() {
-  const { profile, dispatch, nodes, concepts } = useStore();
+  const { profile: savedProfile, nodes, concepts, refreshSnapshot, ready, loadingError, dataMode } = useStore();
+  const [profile, setDraft] = useState(savedProfile);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (!dirty) setDraft(savedProfile); }, [savedProfile, dirty]);
   const stats = useMapStats();
   const list = Object.values(nodes);
   const set = (p: Partial<typeof profile>) => {
-    dispatch({ t: "profile", p });
-    if (liveConfigured()) void persistProfile({ ...profile, ...p }).catch(() => undefined);
+    setDraft((old) => ({ ...old, ...p }));
+    setDirty(true);
   };
 
+  const save = async () => {
+    setSaving(true); setError(null);
+    try {
+      if (!liveConfigured()) throw new Error("Profile editing is for your saved local map. Switch out of rehearsal mode first.");
+      await persistProfile(profile);
+      await refreshSnapshot();
+      setDirty(false);
+    } catch (e) { setError(e instanceof Error ? e.message : "Your changes couldn't be saved."); }
+    finally { setSaving(false); }
+  };
+  if (!ready) return <div className="p-6 text-sm text-muted">{loadingError ?? <OperationStatus label="Loading your profile" detail="Checking your local identity and reading saved preferences." />}{loadingError && <button className="btn ml-3" onClick={() => void refreshSnapshot().catch(() => undefined)}>Try again</button>}</div>;
   return (
     <div className="scroll grid-bg h-full">
       <div className="mx-auto max-w-5xl p-4 sm:p-6">
+        <LocalIdentity />
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-panel p-4"><p className="text-sm text-muted">See how your learning map, guide and conversations fit together.</p><Link href="/architecture" className="btn">How Further works →</Link></div>
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel p-3">
+          <p className="flex-1 text-sm text-muted" role="status">{dataMode === "demo" ? "Sample profile · return to your saved map to edit your preferences." : saving ? "Saving your preferences…" : dirty ? "You have unsaved changes." : "Your profile is saved."}</p>
+          <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
+        </div>
+        {error && <p className="mb-4 text-sm text-err" role="alert">{error}</p>}
+        {saving && <div className="mb-4"><OperationStatus label="Saving your profile" detail="Writing your preferences locally, then reloading the saved version. Your draft stays visible until this succeeds." /></div>}
         <div className="mb-6 flex flex-wrap items-end gap-4">
           <div>
             <h1 className="label mb-1">Profile</h1>
@@ -47,10 +69,10 @@ export default function ProfilePage() {
             <Field label="Role"><input className="field" value={profile.staticProfile.role} onChange={(e) => set({ staticProfile: { ...profile.staticProfile, role: e.target.value } })} /></Field>
             <Field label="Background"><textarea className="field h-20 resize-none" value={profile.staticProfile.background} onChange={(e) => set({ staticProfile: { ...profile.staticProfile, background: e.target.value } })} /></Field>
           </Layer>
-          <Layer title="How you learn" sub="Inferred · editable" badge={profile.preferences.inferred ? <Demo title="Inferred from your events (seed rules).">INFERRED</Demo> : null}>
+          <Layer title="How you learn" sub="Your preferences · editable" badge={profile.preferences.inferred ? <span className="chip">Suggested</span> : null}>
             <Field label="Style"><input className="field" value={profile.preferences.style} onChange={(e) => set({ preferences: { ...profile.preferences, style: e.target.value, inferred: false } })} /></Field>
             <Field label="Pace"><input className="field" value={profile.preferences.pace} onChange={(e) => set({ preferences: { ...profile.preferences, pace: e.target.value, inferred: false } })} /></Field>
-            <p className="text-xs text-muted">Why we think this: you open videos before articles, and most sessions are under 15 minutes. Edit anything that&apos;s wrong.</p>
+            <p className="text-xs text-muted">These preferences help shape your lessons. Change them whenever your needs change; a preference is not a fixed label.</p>
           </Layer>
           <Layer title="Right now" sub="What you're working toward">
             <Field label="Current goal"><textarea className="field h-28 resize-none" value={profile.currentIntent} onChange={(e) => set({ currentIntent: e.target.value })} /></Field>
@@ -61,11 +83,16 @@ export default function ProfilePage() {
         <section className="mt-4 border border-line bg-panel">
           <header className="flex h-10 items-center border-b border-line px-4"><h2 className="label">Matching</h2></header>
           <div className="grid gap-4 p-4 md:grid-cols-3">
-            <Toggle on={profile.openToMatch} onChange={(v) => set({ openToMatch: v })} label="Open to learn with others" hint="Takes effect right away. Turn off to stop getting matches." />
+            <Toggle on={profile.openToMatch} onChange={(v) => set({ openToMatch: v })} label="Open to learn with others" hint="Save your changes to update whether others can find you." />
             <Toggle on={profile.staticProfile.age18Plus} onChange={(v) => set({ staticProfile: { ...profile.staticProfile, age18Plus: v } })} label="I'm 18 or older" hint="Required to learn with others." />
             <Field label="Language">
               <select className="field" value={profile.language} onChange={(e) => set({ language: e.target.value })}>
                 <option value="en">English</option><option value="es">Español</option><option value="hi">हिन्दी</option><option value="pa">ਪੰਜਾਬੀ</option><option value="ja">日本語</option>
+              </select>
+            </Field>
+            <Field label="Time available">
+              <select className="field" value={profile.availableMinutes ?? 10} onChange={(e) => set({ availableMinutes: Number(e.target.value) })}>
+                {[10, 15, 20, 30, 45, 60].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
               </select>
             </Field>
           </div>
@@ -99,40 +126,12 @@ export default function ProfilePage() {
 }
 
 function ConnectedApps() {
-  const [shown, setShown] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [origin, setOrigin] = useState("https://further.app");
-  useEffect(() => setOrigin(window.location.origin), []);
-  const copy = () => {
-    navigator.clipboard?.writeText(TOKEN).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {});
-  };
   return (
     <section className="mt-4 border border-line bg-panel">
       <header className="flex h-10 items-center border-b border-line px-4"><h2 className="label">Connected apps</h2></header>
       <div className="space-y-3 p-4">
-        <p className="text-sm text-muted">Let AI assistants like Meta AI add questions to your map without opening Further. Treat this key like a password.</p>
-        <div className="flex flex-wrap gap-2">
-          <code className="field flex min-h-9 w-auto min-w-[180px] flex-1 items-center font-mono text-sm" aria-label={shown ? "Your key" : "Your key, hidden"}>{shown ? TOKEN : masked(TOKEN)}</code>
-          <button className="btn" onClick={() => setShown(!shown)} aria-pressed={shown}>{shown ? "Hide" : "Reveal"}</button>
-          <button className="btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
-          <button className="btn btn-ghost" disabled title="Coming soon">Regenerate</button>
-        </div>
-        <details className="group border border-line">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm touch-target">
-            <span className="text-dim transition-transform group-open:rotate-90" aria-hidden>▸</span> How to connect
-          </summary>
-          <div className="space-y-2 border-t border-line p-3 text-sm text-muted">
-            <p>Add this to your assistant&apos;s connector settings, then paste your key where it says &lt;your key&gt;.</p>
-            <pre className="overflow-x-auto border border-line bg-bg p-3 font-mono text-xs text-text">{`{
-  "mcpServers": {
-    "further": {
-      "url": "${origin}/mcp",
-      "headers": { "Authorization": "Bearer <your key>" }
-    }
-  }
-}`}</pre>
-          </div>
-        </details>
+        <p className="text-sm text-muted">Your learning guide is available inside Further. Connecting the same map to an external assistant is a separate step; no external assistant is connected to this profile yet.</p>
+        {BUILDER_VIEW && <p className="text-xs text-dim">Independent agent HTTP endpoints are available locally. External token delegation and protocol adapters remain separate from this browser session.</p>}
         {BUILDER_VIEW && <Link href="/connectors" className="btn">Open connector console →</Link>}
       </div>
     </section>

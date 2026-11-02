@@ -1,97 +1,28 @@
 # Further
 
-*Your feed knows what keeps you scrolling. Further knows what you're trying to understand.*
+Further turns a question into a personal learning map, helps someone explore it, and connects willing learners around a shared concept. AI supports the work; people do the explaining and reasoning.
 
-Say what you're curious about, even vaguely. A knowledge map grows from that sentence, with you at the centre. Every topic has one short, real, cited source. Topics you learn light up and move closer to you; ones you skip drift back into the fog. The map learns how you learn and suggests what to explore next. When someone nearby on the map is a step ahead on a neighbouring concept, you can both accept a short AI-facilitated session where each of you teaches the piece you know.
+This local development version builds on the latest merged Connor/Sirpreet `iteration-nov1` UI and backend. It adds independently callable agents, a durable local PostgreSQL data model, owner-scoped vector search, real two-person sessions and explicit model provenance. Current work is uncommitted on `feature/agentic-local`; nothing is deployed or pushed.
 
-![Knowledge map](docs/screenshots/map-1440.png)
-
-## Run it
-
-Requires Node 20+.
-
-```bash
-npm install
-npm run dev        # http://localhost:3000
+```sh
+python3 scripts/dev.py
 ```
 
-With no keys, every AI and realtime system runs in **demo mode**: sample data, no network calls to Meta, no charges. Learners see one "You're exploring with sample data" banner on the map. Set `NEXT_PUBLIC_BUILDER_VIEW=true` in `.env.local` for the builder view: status pills (green live, orange demo), the agent log, per-item DEMO/SEED badges, `/ops` and `/connectors` (both 404 without the flag). Copy `.env.example` to `.env.local` and add keys to switch systems to live one at a time.
+Open http://127.0.0.1:3000 . For an explicit offline model rehearsal, use `python3 scripts/dev.py --fixture`.
 
-```bash
-npm run typecheck
-npm run build
-```
+- [Local setup, storage and tests](docs/LOCAL_DEVELOPMENT.md)
+- [Architecture and dependency diagrams](docs/ARCHITECTURE.md)
+- [Data model and ER diagram](docs/data/README.md)
+- [Agent contracts and invocation](docs/agents/README.md)
+- [Local embedding model and its limits](docs/retrieval/README.md)
+- [UI flows and persistence](docs/ui/README.md)
+- [Generated source dependency inventory](docs/dependency-map.json)
+- [Verification results and remaining limits](docs/VERIFICATION.md)
 
-### Live two-phone path
+The live `/architecture` page shows the domains, agent registry, schema tables and local health. Open `Further.local.code-workspace` to work on the domains side by side. Run `npm run map` after moving dependencies.
 
-Apply `supabase/migrations/0001_init.sql` and `0002_live_learning_loop.sql` to a new Supabase project, then enable **Anonymous Sign-Ins** in Supabase Auth. Set the URL, anon key, and service-role key in `.env.local`; the service-role key stays server-only. The browser receives an anonymous authenticated session, while API routes verify that session before performing shared-graph writes.
+Only standard Meta models and the Baseten hackathon Meta model serve product inference. The OpenAI SDK supplies the client transport; it does not route inference to OpenAI. Credentials stay server-side. App data, uploaded media and embeddings stay local; explicitly requested model calls use the configured hosted Meta/Baseten APIs.
 
-Set `META_API_KEY` to turn on Muse Spark, search-grounded cards, explain-back grading, and Voice Transcribe. The card route uses Meta's Responses API for web search and only presents a live card when returned URL-citation annotations exist. A provider failure or an ungrounded response falls back to an explicitly marked demo card.
+AI experiences stream provider output and show actual agent, tool, delegation and save activity. Drafts remain provisional until the final result arrives. Learners can cancel waiting and retry; interrupted drafts never become completed learning evidence.
 
-## The demo (3 minutes)
-
-| # | Beat | Where |
-|---|---|---|
-| 1 | Voice → bloom: tap the mic, say "why does training AI need special chips?" | Map, command bar |
-| 2 | Tap **Matrix multiplication**: hook with citation, verified clip, flowchart, explain it back | Inspector |
-| 3 | **Your brain this week**: the map replays day 1 → now | Map, bottom left |
-| 4 | Match request (60s), both accept, jigsaw session, both maps update | Match modal → `/session` |
-| 5 | From any MCP client: `add_curiosity("what is HBM memory")`. The node appears on the open map | `/connectors` (or a real client) |
-
-## Screens
-
-| Route | What it's for |
-|---|---|
-| `/` | Mission control: missions, live agent log, explorers, world map, inspector, command bar |
-| `/session` | Jigsaw room: phases, facilitator, Llama Guard on every message, block/report |
-| `/profile` | Three-layer profile, matching settings, MCP token, inventory |
-| `/connectors` | MCP server details, tools, and a live JSON-RPC console |
-| `/ops` | Every agent, Meta model, requirement and production check, with live/demo status and code location |
-
-## Code map
-
-```
-app/
-  page.tsx                 mission control (map screen)
-  session/ profile/ connectors/ ops/
-  api/
-    expand/                F2  SSE streaming expansion + canonicalization
-    transcribe/            F1  Muse Voice Transcribe
-    card/[slug]/           F3  node card
-    resources/verify/      F3  oEmbed / HTTP source check (live, host-allowlisted)
-    explain/               F4  rubric grading
-    match/                 F7  scoring + handshake decisions
-    data/                  authenticated graph hydration, concepts, events
-    session/[id]/          F8 guarded persistent room + atomic completion
-    mcp/                   F10 JSON-RPC MCP server
-    inbox/                 demo stand-in for Supabase Realtime
-    health/                status pills
-components/
-  map/                     KnowledgeMap: radial flowchart, fog, glowing cards, living layout
-  mission/                 left rail, inspector, command bar, match modal, time-lapse
-  shell/ ui/
-lib/
-  math.ts                  bloom/fade math (plan §5.4), shared by map + time-lapse + server
-  matching.ts              match score (plan §5.5)
-  canonicalize.ts          cosine + threshold, demo embedding
-  schemas.ts               Zod for every API boundary
-  requirements.ts          the table rendered on /ops
-  client/                  store, anonymous live auth, hooks
-  server/                  config, Meta client, Supabase boundary, moderation, rate limit
-  demo/seed.ts             all demo data, in one place
-supabase/migrations/       schema + RLS (plan §5.1)
-docs/DESIGN.md             design process, decisions, requirement map, iteration log
-```
-
-## For backend owners
-
-Each system has a typed seam. Fill in the live branch; the UI doesn't change.
-
-- **Connor:** `lib/server/meta.ts` (Muse Spark, Responses grounding, transcribe), `app/api/data` (authenticated graph persistence), `app/api/card` (grounding), `app/api/mcp` (move to the official TS SDK), RLS/rate limit/Sentry.
-- **Amit:** Presence channel `explorers` + 15s scoring job using `lib/matching.ts`, `match_requests` handshake, Broadcast `session:{id}`, `lib/server/moderation.ts` (Llama Guard).
-- **Manpinder:** `lib/demo/seed.ts` (seed concepts, explorers, sources), eval set for the 0.88 canonicalization threshold.
-- **Sirpreet:** everything in `components/`, `docs/DESIGN.md`.
-
-## Honesty rules
-
-Sample data is flagged to learners by the map banner, and per item (`DEMO` / `SEED`) in the builder view. Seed explorers are never presented as real people, and demo grades, transcripts and facilitator turns are never presented as live model output.
+The local persona chooser, PGlite single-process database and HTTP polling are development infrastructure. Production authentication, native PostgreSQL adapter, distributed workers, push updates for rooms/presence, full MCP/A2A interoperability, speech output and measured scale are still future work. Fixture output and seed data are labelled; failed providers never silently turn into demo successes.

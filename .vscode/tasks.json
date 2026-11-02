@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Further: local live",
+      "type": "shell",
+      "command": "python3 scripts/dev.py",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Further: offline rehearsal",
+      "type": "shell",
+      "command": "python3 scripts/dev.py --fixture",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Further: checks",
+      "type": "shell",
+      "command": "npm run check",
+      "problemMatcher": []
+    },
+    {
+      "label": "Further: dependency map",
+      "type": "shell",
+      "command": "npm run map",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "folders": [
+    {
+      "name": "Further \u2014 integration",
+      "path": "."
+    },
+    {
+      "name": "UI",
+      "path": "components"
+    },
+    {
+      "name": "Backend APIs",
+      "path": "app/api"
+    },
+    {
+      "name": "Data model",
+      "path": "domains/data"
+    },
+    {
+      "name": "Agents",
+      "path": "domains/agents"
+    },
+    {
+      "name": "Local retrieval",
+      "path": "domains/retrieval"
+    },
+    {
+      "name": "Architecture and decisions",
+      "path": "docs"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.local": true,
+      "**/.next": true,
+      "**/node_modules": true
+    },
+    "search.exclude": {
+      "**/.local/**": true,
+      "**/.next/**": true
+    }
+  }
+}

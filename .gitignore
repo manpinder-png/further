@@ -10,3 +10,8 @@ out/
 next-env.d.ts
 .vercel
 coverage/
+.local/
+.venv/
+__pycache__/
+test-results/
+playwright-report/

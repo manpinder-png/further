@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/lib/client/store";
 import { learnerModel } from "@/lib/learn";
 import { BUILDER_VIEW } from "@/lib/builder";
+import { useAIStream } from "@/lib/client/useAIStream";
+import ActivityPanel, { OperationStatus } from "@/components/activity/ActivityPanel";
 
 interface TeachData {
   format: string;
@@ -21,40 +23,40 @@ interface TeachData {
 
 // A lesson, once Muse writes it, never regenerates under the reader.
 const TEACH_CACHE = new Map<string, TeachData>();
-const cacheKey = (slug: string, round: number) => `${slug}:v3-depth${round}`;
+const cacheKey = (actor: string, slug: string, round: number) => `${actor}:${slug}:v3-depth${round}`;
 
 export default function Teach({ slug, title, onBranch }: { slug: string; title: string; onBranch?: (title: string) => void }) {
-  const { nodes, events, track, say } = useStore();
+  const { nodes, events, track, say, actorId, dataMode } = useStore();
+  const cacheActor = `${dataMode}:${actorId ?? "sample"}`;
   const [round, setRound] = useState(1);
-  const [data, setData] = useState<TeachData | null>(() => TEACH_CACHE.get(cacheKey(slug, 1)) ?? null);
+  const [data, setData] = useState<TeachData | null>(() => TEACH_CACHE.get(cacheKey(cacheActor, slug, 1)) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
   const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [branching, setBranching] = useState<string | null>(null);
   const [guess, setGuess] = useState<number | null>(null);
-  const [wrongs, setWrongs] = useState(0);
   const [solved, setSolved] = useState(false);
+  const { activity, run: stream, cancel } = useAIStream();
 
   useEffect(() => {
-    setPicked(null); setDone(false); setGuess(null); setWrongs(0); setSolved(false); setBranching(null);
-    if (TEACH_CACHE.has(cacheKey(slug, round)) && attempt === 0) { setData(TEACH_CACHE.get(cacheKey(slug, round))!); return; }
+    setPicked(null); setDone(false); setGuess(null); setSolved(false); setBranching(null);
+    if (TEACH_CACHE.has(cacheKey(cacheActor, slug, round)) && attempt === 0) { setData(TEACH_CACHE.get(cacheKey(cacheActor, slug, round))!); return; }
     setData(null); setError(null);
     let cancelled = false;
     let timedOut = false;
     const ctrl = new AbortController();
     const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, 120_000);
-    fetch("/api/teach", {
+    stream<TeachData>("/api/teach", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug, learnerSummary: learnerModel(nodes, events).summary, depth: round }),
       signal: ctrl.signal,
     })
-      .then(async (r) => {
-        const d = (await r.json()) as TeachData & { error?: string };
-        if (!r.ok || d.error) throw new Error(d.error ?? `Teaching failed (${r.status})`);
+      .then((d) => {
         if (cancelled) return;
-        TEACH_CACHE.set(cacheKey(slug, round), d);
+        TEACH_CACHE.set(cacheKey(cacheActor, slug, round), d);
         setData(d);
         say("EXPAND", `Muse chose “${d.format}” to teach ${title}`, "ok", d.demo);
       })
@@ -62,41 +64,41 @@ export default function Teach({ slug, title, onBranch }: { slug: string; title: 
         // Our own cleanup (React double-mount, slug change) aborts the first
         // request — that is not a timeout and must never surface as one.
         if (cancelled) return;
-        if (e.name === "AbortError") { if (timedOut) setError("This lesson took too long to write. Try again."); return; }
+        if (e.name === "AbortError") { setError(timedOut ? "This lesson took too long to write. Try again." : "Stopped waiting for this lesson. You can retry when ready."); return; }
         setError(e.message);
       })
       .finally(() => clearTimeout(timer));
     return () => { cancelled = true; clearTimeout(timer); ctrl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, attempt, round]);
+  }, [slug, attempt, round, cacheActor]);
 
   if (error)
     return (
       <section className="border-b border-line px-4 py-3" aria-labelledby="learn-h">
         <h4 id="learn-h" className="label mb-1.5">Learn</h4>
-        <p className="text-sm text-muted">Couldn&apos;t write this lesson yet.{BUILDER_VIEW ? ` ${error}` : ""}</p>
-        <button className="btn mt-2" onClick={() => setAttempt((a) => a + 1)}>Try again</button>
+        <ActivityPanel activity={activity} title="Preparing your lesson" onRetry={() => setAttempt((a) => a + 1)} />
+        <p className="mt-2 text-sm text-muted">{error}</p>
       </section>
     );
   if (!data)
     return (
       <section className="border-b border-line px-4 py-3" aria-labelledby="learn-h" aria-busy="true">
         <h4 id="learn-h" className="label mb-2">Learn</h4>
-        <p className="mb-2 text-sm text-muted">Writing a lesson for how you learn…</p>
-        <div className="space-y-2"><div className="scanbar h-3 w-11/12 bg-panel-2" /><div className="scanbar h-3 w-9/12 bg-panel-2" /></div>
+        <ActivityPanel activity={activity} title="Preparing your lesson" onCancel={cancel} onRetry={() => setAttempt((a) => a + 1)} />
       </section>
     );
 
-  const finish = () => {
-    setDone(true);
-    track(slug, "watch", { format: data.format });
-    say("SYSTEM", `finished via ${data.format} → mastery +0.2, format evidence +1`, "ok");
+  const finish = async () => {
+    setSaving(true);
+    const saved = await track(slug, "watch", { format: data.format, ...(data.challenge ? { practice: { answerIndex: guess, selfChecked: true } } : {}) });
+    setSaving(false);
+    if (saved) { setDone(true); say("SYSTEM", `completion saved via ${data.format}`, "ok"); }
   };
   const skip = () => {
     // "Not my thing" is about the FORMAT, not the concept: stay here and teach it another way.
     track(slug, "skip", { format: data.format });
     say("SYSTEM", `skipped ${data.format} → re-teach this concept differently`, "warn");
-    TEACH_CACHE.delete(cacheKey(slug, round));
+    TEACH_CACHE.delete(cacheKey(cacheActor, slug, round));
     setAttempt((a) => a + 1);
   };
   const mastery = nodes[slug]?.mastery ?? 0;
@@ -107,6 +109,9 @@ export default function Teach({ slug, title, onBranch }: { slug: string; title: 
         <h4 id="learn-h" className="label">Learn{round > 1 ? ` · going deeper` : ""}</h4>
         <span className="rounded-full border border-line-2 px-2 py-0.5 text-2xs text-muted" title="Picked for how you learn">{data.format}</span>
       </div>
+      {data.demo && <p className="mb-2 text-xs text-muted">Sample lesson · demonstration only</p>}
+      <ActivityPanel activity={activity} title="Lesson preparation" compact />
+      {saving && <OperationStatus label="Saving your completed practice" detail="Waiting for the local database to acknowledge this learning event." />}
       {/* The demo chooser's note is an internal profile dump; learners only see a real, model-written note. */}
       {(!data.demo || BUILDER_VIEW) && <p className="mb-2 text-xs italic text-muted">{data.adaptedNote}{data.demo && " (demo chooser)"}</p>}
       <h5 className="text-lg font-semibold leading-snug">{data.title}</h5>
@@ -126,7 +131,7 @@ export default function Teach({ slug, title, onBranch }: { slug: string; title: 
 
       {data.challenge && !done && (
         <div className="mt-3 rounded-md border border-line bg-panel-2 px-3 py-2.5">
-          <div className="text-2xs uppercase tracking-[0.12em] text-mastery">Your move · {data.challenge.kind.replace(/-/g, " ")}</div>
+          <div className="text-2xs uppercase tracking-[0.12em] text-mastery">Practice · {data.challenge.kind.replace(/-/g, " ")}</div>
           <p className="mt-1 text-sm font-medium">{data.challenge.prompt}</p>
           <div className="mt-2 grid gap-1.5">
             {data.challenge.options.map((o, i) => {
@@ -141,10 +146,8 @@ export default function Teach({ slug, title, onBranch }: { slug: string; title: 
                     setGuess(i);
                     if (i === data.challenge!.correct) {
                       setSolved(true);
-                      const score = wrongs === 0 ? 3 : wrongs === 1 ? 2 : 1;
-                      track(slug, "explain", { score, format: `challenge:${data.format}` });
-                      say("SYSTEM", `challenge solved (${score}/3 evidence) → mastery up to +${((score / 3) * 0.5).toFixed(2)}`, "ok");
-                    } else setWrongs((w) => w + 1);
+                      say("SYSTEM", "Practice answer revealed. This is not an evaluated explain-back score.", "info");
+                    }
                   }}
                   className={`rounded-md border px-3 py-2 text-left text-sm disabled:cursor-default ${right ? "border-success bg-success/10 text-success" : wrong ? "border-line text-muted line-through decoration-dim" : "border-line hover:border-dim"}`}
                 >
@@ -192,7 +195,7 @@ export default function Teach({ slug, title, onBranch }: { slug: string; title: 
         )
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
-          <button className="btn btn-primary flex-1" onClick={finish} disabled={(data.interaction ? picked === null : false) || (data.challenge ? !solved : false)}>That landed ✓</button>
+          <button className="btn btn-primary flex-1" onClick={() => void finish()} disabled={saving || (data.interaction ? picked === null : false) || (data.challenge ? !solved : false)}>{saving ? "Saving…" : "That landed ✓"}</button>
           <button className="btn" onClick={skip} title="Teach this a different way">Teach it differently</button>
         </div>
       )}

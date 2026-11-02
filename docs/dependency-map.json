@@ -1,0 +1,1703 @@
+{
+  "generatedAt": "2026-11-01T18:33:59.670Z",
+  "generator": "scripts/dependency-map.mjs",
+  "sourceFiles": 100,
+  "localImports": 305,
+  "domains": [
+    {
+      "id": "ui",
+      "fileCount": 34
+    },
+    {
+      "id": "backend",
+      "fileCount": 33
+    },
+    {
+      "id": "agents",
+      "fileCount": 9
+    },
+    {
+      "id": "data",
+      "fileCount": 2
+    },
+    {
+      "id": "retrieval",
+      "fileCount": 1
+    },
+    {
+      "id": "shared",
+      "fileCount": 21
+    }
+  ],
+  "domainEdges": [
+    {
+      "from": "backend",
+      "to": "agents",
+      "count": 9
+    },
+    {
+      "from": "backend",
+      "to": "data",
+      "count": 20
+    },
+    {
+      "from": "backend",
+      "to": "shared",
+      "count": 16
+    },
+    {
+      "from": "backend",
+      "to": "retrieval",
+      "count": 4
+    },
+    {
+      "from": "ui",
+      "to": "agents",
+      "count": 5
+    },
+    {
+      "from": "ui",
+      "to": "shared",
+      "count": 43
+    },
+    {
+      "from": "data",
+      "to": "shared",
+      "count": 3
+    },
+    {
+      "from": "retrieval",
+      "to": "data",
+      "count": 1
+    }
+  ],
+  "files": [
+    "app/api/agents/[agentId]/route.ts",
+    "app/api/agents/invoke/route.ts",
+    "app/api/agents/route.ts",
+    "app/api/card/[slug]/route.ts",
+    "app/api/course/route.ts",
+    "app/api/data/bootstrap/route.ts",
+    "app/api/data/concepts/route.ts",
+    "app/api/data/events/route.ts",
+    "app/api/data/profile/route.ts",
+    "app/api/expand/route.ts",
+    "app/api/explain/route.ts",
+    "app/api/health/route.ts",
+    "app/api/inbox/route.ts",
+    "app/api/local/identity/route.ts",
+    "app/api/local/presence/route.ts",
+    "app/api/local/reindex/route.ts",
+    "app/api/local/search/route.ts",
+    "app/api/local/sessions/[id]/block/route.ts",
+    "app/api/local/sessions/[id]/report/route.ts",
+    "app/api/local/sessions/[id]/route.ts",
+    "app/api/match/route.ts",
+    "app/api/mcp/route.ts",
+    "app/api/media/understand/route.ts",
+    "app/api/resources/verify/route.ts",
+    "app/api/session/[id]/end/route.ts",
+    "app/api/session/[id]/message/route.ts",
+    "app/api/teach/route.ts",
+    "app/api/transcribe/route.ts",
+    "app/architecture/page.tsx",
+    "app/connectors/page.tsx",
+    "app/layout.tsx",
+    "app/ops/page.tsx",
+    "app/page.tsx",
+    "app/profile/page.tsx",
+    "app/session/page.tsx",
+    "components/activity/ActivityPanel.tsx",
+    "components/architecture/ArchitectureExplorer.tsx",
+    "components/builder/AgentLog.tsx",
+    "components/builder/ConnectorConsole.tsx",
+    "components/builder/LocalIdentity.tsx",
+    "components/builder/OpsConsole.tsx",
+    "components/learn/Teach.tsx",
+    "components/map/KnowledgeMap.tsx",
+    "components/mission/AgentAssistant.tsx",
+    "components/mission/CommandBar.tsx",
+    "components/mission/Inspector.tsx",
+    "components/mission/LeftRail.tsx",
+    "components/mission/MatchModal.tsx",
+    "components/mission/TimeLapse.tsx",
+    "components/shell/TopBar.tsx",
+    "components/ui/Mermaid.tsx",
+    "components/ui/bits.tsx",
+    "lib/builder.ts",
+    "lib/canonicalize.ts",
+    "lib/client/audio.ts",
+    "lib/client/format.ts",
+    "lib/client/hooks.ts",
+    "lib/client/live.ts",
+    "lib/client/narration.ts",
+    "lib/client/store.tsx",
+    "lib/client/stream.ts",
+    "lib/client/useAIStream.ts",
+    "lib/demo/seed.ts",
+    "lib/graph-layout.ts",
+    "lib/insight.ts",
+    "lib/layout.ts",
+    "lib/learn.ts",
+    "lib/matching.ts",
+    "lib/math.ts",
+    "lib/mcp-tools.ts",
+    "lib/parse-expansion.ts",
+    "lib/requirements.ts",
+    "lib/schemas.ts",
+    "lib/server/config.ts",
+    "lib/server/meta.ts",
+    "lib/server/moderation.ts",
+    "lib/server/observability.ts",
+    "lib/server/ratelimit.ts",
+    "lib/server/store.ts",
+    "lib/server/supabase.ts",
+    "lib/types.ts",
+    "domains/agents/audio.ts",
+    "domains/agents/contracts.ts",
+    "domains/agents/fixture-model.ts",
+    "domains/agents/index.ts",
+    "domains/agents/openai-provider.ts",
+    "domains/agents/provider-streams.ts",
+    "domains/agents/runtime.ts",
+    "domains/agents/streaming-json.ts",
+    "domains/agents/transcription-stream.ts",
+    "domains/backend/agents.ts",
+    "domains/backend/http.ts",
+    "domains/backend/identity.ts",
+    "domains/backend/social.ts",
+    "domains/backend/streaming.ts",
+    "domains/data/contracts.ts",
+    "domains/data/repository.ts",
+    "domains/retrieval/client.ts",
+    "domains/ui/activity.ts",
+    "domains/ui/contracts.ts"
+  ],
+  "imports": [
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/agents/index.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/invoke/route.ts",
+      "to": "domains/agents/index.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/invoke/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/invoke/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/invoke/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/invoke/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/route.ts",
+      "to": "domains/agents/index.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/card/[slug]/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/course/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/course/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/course/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/course/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/course/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/bootstrap/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/bootstrap/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/bootstrap/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/bootstrap/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/bootstrap/route.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/concepts/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/concepts/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/concepts/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/concepts/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/events/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/events/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/events/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/events/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/profile/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/profile/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/profile/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/profile/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/expand/route.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/explain/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/health/route.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/health/route.ts",
+      "to": "domains/retrieval/client.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/health/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/inbox/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/inbox/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/identity/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/identity/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/presence/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/presence/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/presence/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/presence/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/reindex/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/reindex/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/reindex/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/reindex/route.ts",
+      "to": "domains/retrieval/client.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/search/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/search/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/search/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/search/route.ts",
+      "to": "domains/retrieval/client.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/block/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/block/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/block/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/report/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/report/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/report/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/local/sessions/[id]/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/match/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/match/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/match/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/match/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/match/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/mcp/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/understand/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/understand/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/understand/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/understand/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/understand/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/resources/verify/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/resources/verify/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/resources/verify/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/end/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/end/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/end/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/end/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/session/[id]/message/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/teach/route.ts",
+      "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/teach/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/teach/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/teach/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/teach/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/transcribe/route.ts",
+      "to": "domains/agents/audio.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/transcribe/route.ts",
+      "to": "domains/agents/openai-provider.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/transcribe/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/transcribe/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/transcribe/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/architecture/page.tsx",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/architecture/page.tsx",
+      "to": "domains/agents/openai-provider.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/architecture/page.tsx",
+      "to": "components/architecture/ArchitectureExplorer.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/connectors/page.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/connectors/page.tsx",
+      "to": "components/builder/ConnectorConsole.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/layout.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/layout.tsx",
+      "to": "components/shell/TopBar.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/ops/page.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/ops/page.tsx",
+      "to": "components/builder/OpsConsole.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/client/narration.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/insight.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/LeftRail.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/Inspector.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/CommandBar.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/MatchModal.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/TimeLapse.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "components/builder/LocalIdentity.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/session/page.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/activity/ActivityPanel.tsx",
+      "to": "domains/ui/activity.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/architecture/ArchitectureExplorer.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/architecture/ArchitectureExplorer.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/AgentLog.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/AgentLog.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/AgentLog.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/AgentLog.tsx",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/ConnectorConsole.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/LocalIdentity.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/builder/LocalIdentity.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/LocalIdentity.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/LocalIdentity.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/OpsConsole.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/builder/OpsConsole.tsx",
+      "to": "lib/requirements.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/learn/Teach.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/learn/Teach.tsx",
+      "to": "lib/learn.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/learn/Teach.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/learn/Teach.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/learn/Teach.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "lib/insight.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "lib/graph-layout.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/map/KnowledgeMap.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/AgentAssistant.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/CommandBar.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/CommandBar.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/CommandBar.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/CommandBar.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/CommandBar.tsx",
+      "to": "components/mission/AgentAssistant.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "components/learn/Teach.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "components/ui/Mermaid.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
+      "to": "lib/insight.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/learn.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "components/builder/AgentLog.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/LeftRail.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "lib/matching.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/MatchModal.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/TimeLapse.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/shell/TopBar.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/shell/TopBar.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/shell/TopBar.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/ui/bits.tsx",
+      "to": "lib/builder.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/format.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/layout.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/matching.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/learn.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/client/audio.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/hooks.ts",
+      "to": "lib/client/useAIStream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/live.ts",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/live.ts",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/narration.ts",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/narration.ts",
+      "to": "lib/insight.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/narration.ts",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/insight.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/layout.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/server/config.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/store.tsx",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/stream.ts",
+      "to": "domains/ui/activity.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/client/useAIStream.ts",
+      "to": "domains/ui/activity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/useAIStream.ts",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/useAIStream.ts",
+      "to": "lib/client/stream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/demo/seed.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/graph-layout.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/insight.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/insight.ts",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/insight.ts",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/layout.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/learn.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/matching.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/math.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/server/meta.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/server/moderation.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/server/observability.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/server/ratelimit.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/server/supabase.ts",
+      "to": "lib/server/config.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/audio.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/fixture-model.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/agents/openai-provider.ts",
+      "to": "domains/agents/audio.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/openai-provider.ts",
+      "to": "domains/agents/provider-streams.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/openai-provider.ts",
+      "to": "domains/agents/transcription-stream.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/openai-provider.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/provider-streams.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/runtime.ts",
+      "to": "domains/agents/streaming-json.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/runtime.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/streaming-json.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/agents/transcription-stream.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/agents/index.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/agents/openai-provider.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "lib/learn.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/retrieval/client.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/backend/social.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/agents.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/backend/identity.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/identity.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/social.ts",
+      "to": "domains/data/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/backend/social.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/backend/social.ts",
+      "to": "lib/matching.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/streaming.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/backend/streaming.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/data/contracts.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/data/repository.ts",
+      "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/data/repository.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/data/repository.ts",
+      "to": "domains/data/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/retrieval/client.ts",
+      "to": "domains/data/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/ui/activity.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/ui/contracts.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    }
+  ]
+}

@@ -2,31 +2,19 @@
 // Client state. The event log is the source of truth: node interest/mastery/state
 // are replayed from it with lib/math.ts (plan §5.4), exactly like the time-lapse.
 // Every count shown in the UI (map, rail, profile) comes from useMapStats() below.
-// The learner's map is persisted to localStorage so a full page load keeps it.
-// Production (Connor/Amit): hydrate from Supabase (`events`, `concepts`, `concept_edges`)
-// and append events through an API route; Realtime keeps other devices in sync.
+// Local mode hydrates durable server state; browser storage is reserved for the
+// explicitly selected sample map. A failed write remains retryable in this tab.
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
-import type { AgentName, Concept, Edge, EventKind, Explorer, FEvent, LogEntry, MatchRequest, Profile, UserNode } from "../types";
+import type { AgentName, Concept, Edge, EventKind, Explorer, FEvent, LogEntry, MatchRequest, UserNode } from "../types";
 import { replay } from "../math";
 import { pathFor, progressFor, suggestNext } from "../insight";
 import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
 import { placeNear } from "../layout";
 import type { SystemStatus } from "../server/config";
-import { hydrateLive, liveConfigured, persistEvent } from "./live";
-
-export interface Mission {
-  id: number;
-  text: string;
-  source: "voice" | "text" | "mcp" | "lens";
-  at: number;
-  status: "running" | "done" | "error";
-  intent?: string;
-  error?: string;
-  added: number;
-  reused: number;
-  /** Topics this quest added, for quest progress. */
-  slugs?: string[];
-}
+import { getDataMode, hydrateLive, liveFetch, localIdentity, persistEvent, MODE_KEY, IDENTITY_CHANGE_KEY } from "./live";
+import type { DataMode, MapSnapshot, LocalProfile, Mission } from "@/domains/ui/contracts";
+import { errorMessage, mutationKey, mergeMissions } from "@/domains/ui/contracts";
+export type { Mission } from "@/domains/ui/contracts";
 
 /** Plain-language activity that isn't a map event (e.g. a match). */
 export interface Note {
@@ -43,6 +31,13 @@ export interface SessionResult {
 
 interface State {
   ready: boolean;
+  actorId: string | null;
+  dataMode: DataMode;
+  modelMode: "live" | "fixture";
+  loadingError: string | null;
+  saveError: string | null;
+  pendingWrites: number;
+  currentSessionId: string | null;
   concepts: Record<string, Concept>;
   edges: Edge[];
   events: FEvent[];
@@ -51,7 +46,7 @@ interface State {
   missions: Mission[];
   explorers: Explorer[];
   match: MatchRequest | null;
-  profile: Profile;
+  profile: LocalProfile;
   status: SystemStatus | null;
   sessions: SessionResult[];
   notes: Note[];
@@ -64,7 +59,11 @@ interface State {
 
 type Action =
   | { t: "hydrate"; now: number; saved?: Saved | null }
-  | { t: "hydrateLive"; snapshot: { concepts: Concept[]; edges: Edge[]; events: FEvent[]; profile?: Profile | null } }
+  | { t: "hydrateLive"; snapshot: MapSnapshot }
+  | { t: "loadError"; error: string }
+  | { t: "saveError"; error: string | null }
+  | { t: "pending"; delta: number }
+  | { t: "presence"; explorers: Explorer[]; match?: MatchRequest | null }
   | { t: "concept"; c: Concept; edge?: Edge }
   | { t: "edge"; e: Edge }
   | { t: "event"; slug: string; kind: EventKind; payload?: Record<string, unknown> }
@@ -73,7 +72,7 @@ type Action =
   | { t: "mission"; m: Mission }
   | { t: "missionPatch"; id: number; patch: Partial<Mission> }
   | { t: "match"; m: MatchRequest | null }
-  | { t: "profile"; p: Partial<Profile> }
+  | { t: "profile"; p: Partial<LocalProfile> }
   | { t: "status"; s: SystemStatus }
   | { t: "session"; r: SessionResult }
   | { t: "note"; text: string }
@@ -103,6 +102,13 @@ let evId = 10_000;
 
 const initial: State = {
   ready: false,
+  actorId: null,
+  dataMode: "local",
+  modelMode: "live",
+  loadingError: null,
+  saveError: null,
+  pendingWrites: 0,
+  currentSessionId: null,
   concepts: {},
   edges: [],
   events: [],
@@ -124,6 +130,7 @@ function reducer(s: State, a: Action): State {
   switch (a.t) {
     case "hydrate": {
       const explorers = seedExplorers(a.now);
+      s = { ...s, dataMode: "demo", loadingError: null };
       if (a.saved?.events?.length) {
         evId = Math.max(evId, ...a.saved.events.map((e) => e.id + 1));
         return {
@@ -172,11 +179,22 @@ function reducer(s: State, a: Action): State {
         concepts: Object.fromEntries(placed.map((c) => [c.slug, c])),
         edges: a.snapshot.edges,
         events: a.snapshot.events,
-        explorers: [],
+        actorId: a.snapshot.actorId ?? s.actorId,
+        dataMode: "local",
+        modelMode: a.snapshot.modelMode ?? s.modelMode,
+        loadingError: null,
+        explorers: a.snapshot.explorers ?? s.explorers,
+        match: a.snapshot.match === undefined ? s.match : a.snapshot.match,
+        currentSessionId: a.snapshot.currentSessionId ?? null,
+        missions: a.snapshot.missions === undefined ? s.missions : mergeMissions(s.missions, a.snapshot.missions),
         profile: a.snapshot.profile ?? s.profile,
-        log: [{ id: logId++, at: Date.now(), agent: "SYSTEM", msg: "Loaded your persisted learning map", level: "ok" }],
+        log: s.ready ? s.log : [{ id: logId++, at: Date.now(), agent: "SYSTEM", msg: "Loaded your persisted learning map", level: "ok" }],
       };
     }
+    case "loadError": return { ...s, loadingError: a.error };
+    case "saveError": return { ...s, saveError: a.error };
+    case "pending": return { ...s, pendingWrites: Math.max(0, s.pendingWrites + a.delta) };
+    case "presence": return { ...s, explorers: a.explorers, match: a.match === undefined ? s.match : a.match };
     case "concept":
       return {
         ...s,
@@ -219,7 +237,9 @@ interface Ctx extends State {
   dispatch: React.Dispatch<Action>;
   log: LogEntry[];
   say: (agent: AgentName, msg: string, level?: LogEntry["level"], demo?: boolean) => void;
-  track: (slug: string, kind: EventKind, payload?: Record<string, unknown>) => void;
+  track: (slug: string, kind: EventKind, payload?: Record<string, unknown>) => Promise<boolean>;
+  refreshSnapshot: () => Promise<void>;
+  retryPendingWrites: () => Promise<void>;
 }
 
 const StoreCtx = createContext<Ctx | null>(null);
@@ -227,47 +247,131 @@ const StoreCtx = createContext<Ctx | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initial);
   const boot = useRef(false);
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === MODE_KEY || event.key === IDENTITY_CHANGE_KEY) window.location.reload();
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
+
+  const current = useRef(state);
+  current.current = state;
+  const refreshing = useRef<Promise<void> | null>(null);
+  const identityReady = useRef(false);
+  const refreshRequested = useRef(0);
+  const refreshSnapshot = useCallback(async () => {
+    refreshRequested.current++;
+    if (refreshing.current) return refreshing.current;
+    const request = (async () => {
+      if (!identityReady.current) { await localIdentity(); identityReady.current = true; }
+      // A mutation completed during an older read needs a fresh trailing read.
+      // Resolve all callers only after the newest requested snapshot is applied.
+      let completed = 0;
+      while (completed < refreshRequested.current) {
+        const requested = refreshRequested.current;
+        if (getDataMode() === "demo") {
+          dispatch({ t: "hydrate", now: Date.now(), saved: load() });
+        } else dispatch({ t: "hydrateLive", snapshot: await hydrateLive() });
+        completed = requested;
+      }
+    })()
+      .catch((error) => {
+        identityReady.current = false;
+        dispatch({ t: "loadError", error: errorMessage(error, "Your map couldn't load. Your saved data has not been replaced.") });
+        throw error;
+      })
+      .finally(() => { refreshing.current = null; });
+    refreshing.current = request;
+    return request;
+  }, []);
 
   useEffect(() => {
     if (boot.current) return;
     boot.current = true;
-    const bootNow = Date.now();
-    // A real (anonymous) Supabase session takes precedence over this browser's copy and
-    // the sample map. Without Supabase, or if sign-in fails, use the saved or sample map.
-    if (liveConfigured()) {
-      hydrateLive()
-        .then((snapshot) => dispatch({ t: "hydrateLive", snapshot }))
-        .catch(() => dispatch({ t: "hydrate", now: bootNow, saved: load() }));
-    } else {
-      dispatch({ t: "hydrate", now: bootNow, saved: load() });
-    }
-    fetch("/api/health")
+    void refreshSnapshot().catch(() => undefined);
+    liveFetch("/api/health")
       .then((r) => r.json())
-      .then((s: SystemStatus) => {
-        dispatch({ t: "status", s });
-        const demo = Object.entries(s).filter(([, v]) => v === "demo").map(([k]) => k);
-        if (demo.length) dispatch({ t: "log", e: { agent: "SYSTEM", msg: `Demo mode for: ${demo.join(", ")}`, level: "warn" } });
-      })
-      .catch(() => dispatch({ t: "log", e: { agent: "SYSTEM", msg: "Health check failed", level: "err" } }));
-  }, []);
+      .then((s: SystemStatus) => dispatch({ t: "status", s }))
+      .catch(() => dispatch({ t: "log", e: { agent: "SYSTEM", msg: "Health check unavailable", level: "warn" } }));
+  }, [refreshSnapshot]);
 
-  // Persist the learner's map (debounced). Skips until hydrated so seed data never overwrites a save.
+  // Rehearsal data remains separate from durable local users.
   useEffect(() => {
-    if (!state.ready) return;
+    if (!state.ready || state.dataMode !== "demo") return;
     const t = setTimeout(() => save(state), 300);
     return () => clearTimeout(t);
   }, [state]);
 
+  // Heartbeats are independent of learning or requesting a match.
+  useEffect(() => {
+    if (!state.ready || state.dataMode !== "local") return;
+    let alive = true;
+    const heartbeat = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const now = current.current;
+        const snapshot = replay(now.events);
+        const r = await liveFetch("/api/local/presence", {
+          method: "POST",
+          body: JSON.stringify({
+            activeConcepts: Object.values(snapshot).sort((a, b) => b.interest - a.interest).slice(0, 5).map((n) => n.slug),
+            mastery: Object.fromEntries(Object.values(snapshot).map((n) => [n.slug, n.mastery])),
+            language: now.profile.language,
+            openToMatch: now.profile.openToMatch,
+            availableMinutes: now.profile.availableMinutes ?? 10,
+          }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (alive && Array.isArray(d.explorers)) dispatch({ t: "presence", explorers: d.explorers, match: d.match });
+      } catch { /* The next heartbeat retries; do not manufacture peers. */ }
+    };
+    void heartbeat();
+    const interval = setInterval(heartbeat, 10_000);
+    const visible = () => { if (document.visibilityState === "visible") void heartbeat(); };
+    document.addEventListener("visibilitychange", visible);
+    return () => { alive = false; clearInterval(interval); document.removeEventListener("visibilitychange", visible); };
+  }, [state.ready, state.dataMode, state.profile.openToMatch]);
+
   const nodes = useMemo(() => replay(state.events), [state.events]);
   const say = useCallback<Ctx["say"]>((agent, msg, level = "info", demo) => dispatch({ t: "log", e: { agent, msg, level, demo } }), []);
+  // Writes stay in order so rapid actions cannot race a later snapshot.
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  type PendingEvent = { slug: string; kind: EventKind; payload?: Record<string, unknown>; key: string };
+  const failedWrites = useRef(new Map<string, PendingEvent>());
+  const enqueue = useCallback((event: PendingEvent) => {
+    dispatch({ t: "pending", delta: 1 });
+    const write = writeQueue.current.then(async () => {
+      try {
+        await persistEvent(event.slug, event.kind, event.payload, event.key);
+        failedWrites.current.delete(event.key);
+        await refreshSnapshot();
+        if (!failedWrites.current.size) dispatch({ t: "saveError", error: null });
+        return true;
+      } catch (error) {
+        failedWrites.current.set(event.key, event);
+        dispatch({ t: "saveError", error: errorMessage(error, "Your latest action couldn't be saved. Please retry it.") });
+        return false;
+      } finally {
+        dispatch({ t: "pending", delta: -1 });
+      }
+    });
+    writeQueue.current = write.then(() => undefined);
+    return write;
+  }, [refreshSnapshot]);
   const track = useCallback<Ctx["track"]>((slug, kind, payload) => {
-    dispatch({ t: "event", slug, kind, payload });
-    // Optimistic local state keeps the map responsive; Postgres records the
-    // same event atomically when a live anonymous/authenticated session exists.
-    if (liveConfigured()) persistEvent(slug, kind, payload).catch(() => undefined);
-  }, []);
+    if (getDataMode() === "demo") {
+      dispatch({ t: "event", slug, kind, payload });
+      return Promise.resolve(true);
+    }
+    return enqueue({ slug, kind, payload, key: mutationKey() });
+  }, [enqueue]);
+  const retryPendingWrites = useCallback(async () => {
+    for (const event of [...failedWrites.current.values()]) await enqueue(event);
+  }, [enqueue]);
 
-  const value = useMemo(() => ({ ...state, nodes, dispatch, say, track }), [state, nodes, say, track]);
+  const value = useMemo(() => ({ ...state, nodes, dispatch, say, track, refreshSnapshot, retryPendingWrites }), [state, nodes, say, track, refreshSnapshot, retryPendingWrites]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
 
@@ -284,7 +388,7 @@ export function useMapStats() {
     const list = Object.values(nodes);
     const by = (st: string) => list.filter((n) => n.state === st).length;
     // A session writes one "session" event per concept; group them back into sessions.
-    const sessionKeys = new Set(events.filter((e) => e.kind === "session").map((e) => `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`));
+    const sessionKeys = new Set(events.filter((e) => e.kind === "session").map((e) => String(e.payload?.sessionId ?? `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`)));
     return {
       concepts: list.length,
       understood: by("understood"),

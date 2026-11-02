@@ -1,311 +1,201 @@
 "use client";
-// F8 / E6: AI-facilitated jigsaw session ("Today's swap" in the UI). Each person teaches the piece they know.
-// Layout: ≥1280 three columns · 768–1279 swap panel + chat · <768 chat-first with tabs.
-// Every human message → /api/session/:id/message → Llama Guard → (safe) broadcast.
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/client/store";
-import { liveConfigured, liveFetch } from "@/lib/client/live";
-import { CATALOG, seedExplorers } from "@/lib/demo/seed";
-import { Demo, Head, NodeIcon, ShieldIcon } from "@/components/ui/bits";
-import { BUILDER_VIEW } from "@/lib/builder";
-import { personName } from "@/lib/client/format";
-
-type Msg = {
-  id: number;
-  who: "facilitator" | "me" | "peer" | "system";
-  text: string;
-  guard?: { safe: boolean; engine: string; ms: number; category?: string };
-  demo?: boolean;
-};
-
-const PHASES = ["You explain", "Peer explains", "Joint question", "Summary"];
-const PEER_LINES = [
-  "Memory bandwidth is how many bytes per second the chip can pull from memory. If it's too narrow, the math units just sit there waiting.",
-  "Put the memory right next to the chip and stack it vertically. More lanes, shorter wires. That's what HBM does.",
-];
+import { getRoom, liveFetch } from "@/lib/client/live";
+import type { RoomMessage, RoomSnapshot } from "@/domains/ui/contracts";
+import { mutationKey } from "@/domains/ui/contracts";
+import { Head, NodeIcon, ShieldIcon } from "@/components/ui/bits";
+import { useAIStream } from "@/lib/client/useAIStream";
+import ActivityPanel, { OperationStatus } from "@/components/activity/ActivityPanel";
 
 export default function SessionPage() {
-  return (
-    <Suspense fallback={null}>
-      <Session />
-    </Suspense>
-  );
+  return <Suspense fallback={<p className="p-6 text-sm text-muted">Opening your session…</p>}><Session /></Suspense>;
 }
 
 function Session() {
-  const { match, profile, ready, sessions } = useStore();
+  const { match, profile, ready, currentSessionId, dataMode } = useStore();
   const params = useSearchParams();
-  const [forced, setForced] = useState(false);
-  const active = (match?.status === "accepted" && params.get("m") === match.id) || forced;
-  if (!ready) return null;
-  if (!active)
-    return (
-      <div className="grid-bg scroll flex h-full items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-lg border border-line bg-panel">
-          <header className="flex h-10 items-center border-b border-line px-4"><h1 className="label">Session</h1></header>
-          <div className="space-y-4 p-5">
-            <p className="text-md text-text/90">No session right now.</p>
-            <p className="text-sm text-muted">
-              Sessions start when someone exploring the same part of the map is a step ahead on a neighbouring concept, and you <em>both</em> accept within 60 seconds. Nothing connects without both of you.
-            </p>
-            {sessions.length > 0 && (
-              <div>
-                <h2 className="label mb-2">Past sessions</h2>
-                {sessions.map((s) => (
-                  <div key={s.at} className="mb-1 border border-line bg-panel-2 px-3 py-2 text-sm">
-                    With {personName(s.peer)} · {s.concepts.map((c) => CATALOG[c]?.title ?? c).join(", ")}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Link href="/" className="btn">Back to map</Link>
-              {BUILDER_VIEW && <button className="btn btn-ghost" onClick={() => setForced(true)} title="Rehearsal only: opens a session with a seed peer">Rehearse with seed peer</button>}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  return <Room peerId={match?.peer.id ?? "amit"} you={profile.displayName} youStrong={match?.youStrong ?? "matrix-multiplication"} peerStrong={match?.peerStrong ?? "memory-bandwidth"} shared={match?.concept ?? "ai-accelerators"} sessionId={params.get("s") ?? match?.sessionId} />;
+  const id = params.get("s") ?? match?.sessionId ?? currentSessionId;
+  const [room, setRoom] = useState<RoomSnapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!ready || !id || dataMode !== "local") return;
+    let alive = true;
+    setRoom(null); setError(null);
+    getRoom(id).then((snapshot) => { if (alive) setRoom(snapshot); }).catch((e: Error) => { if (alive) setError(e.message); });
+    return () => { alive = false; };
+  }, [id, ready, dataMode, attempt]);
+  if (!ready) return <div className="p-6"><OperationStatus label="Loading your learning profile" detail="Checking your browser identity and reading saved local data." /></div>;
+  if (id && dataMode === "local" && !error && !room) return <div className="p-6"><OperationStatus label="Opening the shared conversation" detail="Checking room membership and restoring saved messages. This is a database read." /></div>;
+  if (room) return <Room key={room.id} initial={room} you={profile.displayName} />;
+  return (
+    <div className="grid-bg scroll flex h-full items-center justify-center p-4 sm:p-6">
+      <section className="w-full max-w-lg rounded-xl border border-line bg-panel p-5">
+        <h1 className="text-xl font-semibold">{error ? "Couldn't open this session" : "Learn with someone"}</h1>
+        <p className="mt-3 text-sm text-muted" role={error ? "alert" : undefined}>{error ?? (dataMode === "demo" ? "The sample map is for exploring the interface. Return to saved local data to start a real conversation between two learners." : "A session begins when two people accept the same match. Find a learning partner from your map, then come here to compare ideas.")}</p>
+        <div className="mt-4 flex gap-2"><Link href="/" className="btn">Back to map</Link>{error && <button className="btn btn-primary" onClick={() => setAttempt((v) => v + 1)}>Try again</button>}</div>
+      </section>
+    </div>
+  );
 }
 
-function Room({ peerId, you, youStrong, peerStrong, shared, sessionId }: { peerId: string; you: string; youStrong: string; peerStrong: string; shared: string; sessionId?: string }) {
-  const { say, track, dispatch, nodes, match } = useStore();
+function Room({ initial, you }: { initial: RoomSnapshot; you: string }) {
+  const { say, dispatch, nodes, concepts, refreshSnapshot } = useStore();
   const router = useRouter();
-  const peer = useMemo(() => match?.peer.id === peerId ? match.peer : seedExplorers(Date.now()).find((e) => e.id === peerId) ?? {
-    id: peerId, name: "Explorer", demo: false, color: "#4ddfe6", activeConcepts: [], mastery: {}, openToMatch: true, language: "en", lastActive: Date.now(),
-  }, [match, peerId]);
-  // Live (Connor): a real session with a real person, stored in Postgres.
-  const live = Boolean(sessionId && liveConfigured() && !peer.demo);
-  const T = (s: string) => CATALOG[s]?.title ?? s;
-  const ctx = { a: you, aStrong: T(youStrong), b: peer.name, bStrong: T(peerStrong), shared: T(shared) };
-  const id = useRef(1);
-  const turn = useRef(0);
-  const [msgs, setMsgs] = useState<Msg[]>(() => live
-    ? [{ id: 0, who: "system", text: "Session started · 10 minutes. Start by explaining your piece in two sentences." }]
-    : [
-      { id: 0, who: "system", text: `Session started · 10 minutes` },
-      {
-        id: 1,
-        who: "facilitator",
-        demo: true,
-        text: `Hi ${you} and ${peer.name}. You're both exploring ${ctx.shared}. ${you} knows ${ctx.aStrong}; ${peer.name} knows ${ctx.bStrong}. ${you}, explain ${ctx.aStrong.toLowerCase()} in two sentences.`,
-      },
-    ]);
-  const [phase, setPhase] = useState(0);
+  const [room, setRoom] = useState(initial);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [done, setDone] = useState(false);
-  const [ended, setEnded] = useState(false);
-  const [blocked, setBlocked] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const [reported, setReported] = useState(false);
-  const [left, setLeft] = useState(600);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const { activity, run: stream, cancel } = useAIStream();
   const [tab, setTab] = useState<"chat" | "swap" | "safety">("chat");
   const box = useRef<HTMLDivElement>(null);
+  const pendingSend = useRef<{ text: string; key: string } | null>(null);
+  const finishKey = useRef(mutationKey());
+  const endedSynced = useRef(false);
+  const requestSequence = useRef(0);
+  const appliedSequence = useRef(0);
+  const title = useCallback((slug: string) => concepts[slug]?.title ?? slug.replace(/-/g, " "), [concepts]);
+  const ended = Boolean(room.endedAt);
+  const blocked = Boolean(room.blocked);
+  const messages = useMemo(() => room.messages.filter((m) => !blocked || m.who !== "peer"), [room.messages, blocked]);
 
-  useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs.length]);
+  const sync = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    const next = await getRoom(initial.id);
+    if (sequence >= appliedSequence.current) { appliedSequence.current = sequence; setRoom(next); setSyncError(null); }
+    return next;
+  }, [initial.id]);
   useEffect(() => {
-    if (ended) return;
-    const iv = setInterval(() => setLeft((l) => Math.max(0, l - 1)), 1000);
-    return () => clearInterval(iv);
-  }, [ended]);
-
-  // Live: read the stored transcript. Polling is a small transport seam; swap for Supabase Broadcast later.
-  useEffect(() => {
-    if (!live || !sessionId) return;
     let alive = true;
-    const sync = async () => {
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      const sequence = ++requestSequence.current;
       try {
-        const r = await liveFetch(`/api/session/${sessionId}/message`);
-        const d = await r.json();
-        if (!alive || !r.ok || !Array.isArray(d.messages)) return;
-        setMsgs((previous) => [...previous.filter((m) => m.who === "system"), ...(d.messages as Msg[])]);
-      } catch { /* keep the composer; the next poll retries */ }
+        const next = await getRoom(initial.id);
+        if (alive && sequence >= appliedSequence.current) { appliedSequence.current = sequence; setRoom(next); setSyncError(null); }
+      } catch { if (alive) setSyncError("Connection interrupted. Retrying without replacing your conversation."); }
+      finally { pending = false; }
     };
-    void sync();
-    const interval = setInterval(sync, 1800);
-    return () => { alive = false; clearInterval(interval); };
-  }, [live, sessionId]);
+    const timer = setInterval(refresh, 1800);
+    return () => { alive = false; clearInterval(timer); };
+  }, [initial.id]);
+  useEffect(() => {
+    if (ended && !endedSynced.current) {
+      endedSynced.current = true;
+      void refreshSnapshot().catch(() => setError("The session is saved, but your map hasn't refreshed yet."));
+    }
+  }, [ended, refreshSnapshot]);
+  useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [messages.length]);
 
-  const push = (m: Omit<Msg, "id">) => setMsgs((p) => [...p, { ...m, id: ++id.current }]);
-  const history = () => msgs.filter((m) => m.who !== "system").map((m) => ({ role: m.who === "facilitator" ? ("assistant" as const) : ("user" as const), content: m.text.slice(0, 1000) }));
-
-  const send = async (who: "me" | "peer", body: string) => {
-    setSending(true);
-    say("GUARD", `Llama Guard ← ${who === "me" ? you : peer.name}: "${body.slice(0, 40)}…"`);
-    const request = { method: "POST", body: JSON.stringify({ from: who, text: body, turn: turn.current, ctx, history: history() }) };
-    const r = live && sessionId
-      ? await liveFetch(`/api/session/${sessionId}/message`, request)
-      : await fetch("/api/session/demo/message", { ...request, headers: { "content-type": "application/json" } });
-    const d = await r.json();
-    setSending(false);
-    if (!r.ok) { push({ who: "system", text: d.error ?? "Message held." }); return; }
-    say("GUARD", `${d.verdict.safe ? "safe" : `UNSAFE ${d.verdict.category}`} · ${d.verdict.engine} · ${d.verdict.ms}ms`, d.verdict.safe ? "ok" : "err", d.verdict.engine !== "llama-guard");
-    if (!d.delivered) {
-      push({ who: "system", text: `This message was held by the safety check and wasn't delivered.` });
-      return;
+  const send = async () => {
+    const body = text.trim();
+    if (!body || sending || ended || blocked) return;
+    const pending = pendingSend.current?.text === body ? pendingSend.current : { text: body, key: mutationKey() };
+    pendingSend.current = pending;
+    setSending(true); setError(null); setNotice(null);
+    try {
+      const result = await stream<RoomSnapshot & { delivered?: boolean; facilitatorError?: string }>(`/api/session/${encodeURIComponent(room.id)}/message`, {
+        method: "POST", headers: { "idempotency-key": pending.key },
+        body: JSON.stringify({
+          from: "me", text: body, idempotencyKey: pending.key,
+          turn: messages.filter((m) => m.who === "me" || m.who === "peer").length,
+          ctx: { a: you, aStrong: title(room.youStrong), b: room.peer.name, bStrong: title(room.peerStrong), shared: title(room.shared) },
+          history: messages.filter((m) => m.who !== "system").slice(-30).map((m) => ({ role: m.who === "facilitator" ? "assistant" : "user", content: m.text })),
+        }),
+      });
+      if (result.delivered === false) throw new Error("This message wasn't delivered. Review it before trying again.");
+      if (typeof result.facilitatorError === "string") setNotice(result.facilitatorError);
+      setText(""); pendingSend.current = null;
+      say("SYSTEM", "Message saved to the shared conversation", "ok");
+      await sync();
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") setNotice("Stopped waiting for the guide. Your message may already be saved; the conversation will refresh automatically.");
+      else setError(e instanceof Error ? e.message : "Your message couldn't be sent.");
     }
-    if (!live) push({ who, text: body, guard: d.verdict, demo: who === "peer" });
-    turn.current++;
-    setPhase(Math.min(3, turn.current));
-    if (d.facilitator && !live) {
-      say("FACILITATE", `turn ${turn.current}: ${d.facilitator.split(/\s+/).length} words (≤ 40)`, "ok", d.demo);
-      await new Promise((r) => setTimeout(r, 400));
-      push({ who: "facilitator", text: d.facilitator, demo: d.demo });
-    }
-    if (d.done) { setDone(true); return; }
-    // DEMO: seed peer replies on its turns. Live: arrives over Supabase Broadcast.
-    if (!live && who === "me" && (turn.current === 1 || turn.current === 3) && !blocked) {
-      setTimeout(() => send("peer", PEER_LINES[turn.current === 1 ? 0 : 1]), 1600);
-    }
+    finally { setSending(false); }
+  };
+  const finish = async () => {
+    setEnding(true); setError(null);
+    try {
+      const res = await liveFetch(`/api/session/${encodeURIComponent(room.id)}/end`, {
+        method: "POST", headers: { "idempotency-key": finishKey.current },
+        body: JSON.stringify({ concepts: [...new Set([room.youStrong, room.peerStrong])], summary: ["Learning session completed"], idempotencyKey: finishKey.current }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "The session couldn't be completed yet.");
+      // Completion records progress once on the server. Never track it again here.
+      await sync(); await refreshSnapshot();
+      say("FACILITATE", "Session completion saved for both participants", "ok");
+    } catch (e) { setError(e instanceof Error ? e.message : "The session couldn't be completed yet."); }
+    finally { setEnding(false); }
+  };
+  const act = async (action: "block" | "report") => {
+    setError(null); setBlocking(true);
+    try {
+      const res = await liveFetch(`/api/local/sessions/${encodeURIComponent(room.id)}/${action}`, { method: "POST", body: JSON.stringify({ reason: action === "report" ? reportReason.trim() || "Please review this interaction" : undefined }) });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? `Couldn't save this ${action}.`);
+      if (action === "block") { appliedSequence.current = ++requestSequence.current; setRoom((r) => ({ ...r, blocked: true })); dispatch({ t: "match", m: null }); }
+      else { setReported(true); setReportOpen(false); }
+      await refreshSnapshot();
+    } catch (e) { setError(e instanceof Error ? e.message : `Couldn't save this ${action}.`); }
+    finally { setBlocking(false); }
   };
 
-  const end = async () => {
-    if (live && sessionId) {
-      try {
-        const r = await liveFetch(`/api/session/${sessionId}/end`, { method: "POST", body: JSON.stringify({ concepts: [youStrong, peerStrong], summary: ["Session completed"] }) });
-        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error ?? "Couldn't update maps"); }
-      } catch (err) {
-        say("FACILITATE", err instanceof Error ? err.message : "Couldn't update maps", "err");
-        return;
-      }
-    }
-    setEnded(true);
-    track(youStrong, "session", { with: peer.name });
-    track(peerStrong, "session", { with: peer.name });
-    dispatch({ t: "session", r: { peer: peer.name, concepts: [youStrong, peerStrong], summary: [], at: Date.now() } });
-    say("FACILITATE", `session summary → sessions; mastery +0.2 on ${youStrong}, ${peerStrong} (learned with ${peer.name}); suggested: hbm`, "ok");
-  };
-
-  const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
-
-  const swap = (
-    <>
-      <Piece label="You teach" color="#f26b1d" slug={youStrong} title={ctx.aStrong} nodes={nodes} />
-      <Piece label={`${peer.name} teaches`} color={peer.color} slug={peerStrong} title={ctx.bStrong} demo={peer.demo} />
-      <p className="border-b border-line px-4 py-3 text-sm text-muted">Both exploring <span className="text-text">{ctx.shared}</span></p>
-    </>
-  );
-  const safety = (
-    <ul className="space-y-3 p-4 text-sm text-muted">
-      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Every message is checked for safety before the other person sees it.</li>
-      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Block and Report are always one tap away.</li>
-      <li className="flex gap-2"><span className="mt-0.5 text-success"><ShieldIcon size={14} /></span> Learning with others is 18+ only.</li>
-      {BUILDER_VIEW && (
-        <li className="border border-line bg-bg p-2 font-mono text-2xs text-dim">
-          Text chat over Supabase Broadcast.<br />POST /api/session/:id/message<br />→ moderate() · Llama Guard<br />→ broadcast session:{"{id}"}<br />→ facilitator turn (Muse Spark)
-        </li>
-      )}
-    </ul>
-  );
-
+  const swap = <><Piece label="You bring" color="#f26b1d" slug={room.youStrong} title={title(room.youStrong)} nodes={nodes} /><Piece label={`${room.peer.name} brings`} color={room.peer.color} slug={room.peerStrong} title={title(room.peerStrong)} /><p className="border-b border-line px-4 py-3 text-sm text-muted">Exploring <span className="text-text">{title(room.shared)}</span> together.</p></>;
+  const safety = <ul className="space-y-3 p-4 text-sm text-muted"><li className="flex gap-2"><ShieldIcon size={16} /><span>You can leave, block or report at any time.</span></li><li>Blocking is saved and stops further interaction with this person.</li><li>Reports are saved on this Mac for review; they are not sent to an outside moderation team.</li><li>The guide helps you discuss and compare ideas. Its replies can be mistaken.</li></ul>;
   return (
-    <div className="flex h-full min-h-0 flex-col md:grid md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_300px]">
-      {/* Left: today's swap (+ safety below 1280px) */}
-      <aside className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex">
-        <header className="flex h-10 shrink-0 items-center border-b border-line px-4"><h2 className="label">Today&apos;s swap</h2></header>
-        {swap}
-        <div className="scroll min-h-0 flex-1 xl:hidden">
-          <h2 className="label px-4 pt-4">Safety</h2>
-          {safety}
-        </div>
-      </aside>
-
-      {/* Center: chat */}
+    <div className="flex h-full min-h-0 flex-col md:grid md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+      <aside className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex"><header className="border-b border-line px-4 py-3"><h2 className="label">Today&apos;s exchange</h2></header>{swap}<div className="scroll min-h-0 flex-1 xl:hidden">{safety}</div></aside>
       <section className="flex min-h-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3 sm:gap-3">
-          <Head color={peer.color} size={20} />
-          <span className="min-w-0 truncate text-sm">with {peer.name}</span>
-          <Demo title="Seed peer for rehearsal.">SEED PEER</Demo>
-          <span className="ml-auto font-mono text-md font-medium tabular-nums" aria-label={`${Math.floor(left / 60)} minutes ${left % 60} seconds left`}>{mm}:{ss}</span>
-          <button className="btn shrink-0 px-3" onClick={() => { setBlocked(true); say("GUARD", `blocked ${peer.name}; won't be matched again`, "warn"); }} disabled={blocked}>{blocked ? "Blocked" : "Block"}</button>
-          <button className="btn shrink-0 px-3" onClick={() => { setReported(true); say("GUARD", `report filed on session demo`, "warn"); }} disabled={reported}>{reported ? "Reported" : "Report"}</button>
+        <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
+          <Head color={room.peer.color} size={20} /><h1 className="min-w-0 flex-1 truncate text-sm font-medium">with {room.peer.name}</h1>
+          <button className="btn px-3 text-xs" onClick={() => void act("block")} disabled={blocked || blocking}>{blocked ? "Blocked" : "Block"}</button>
+          <button className="btn px-3 text-xs" onClick={() => setReportOpen((v) => !v)} disabled={reported || blocking}>{reported ? "Report saved" : "Report"}</button>
+          {!ended && !blocked && <button className="btn px-3 text-xs" onClick={() => void finish()} disabled={ending}>{ending ? "Saving…" : "Finish session"}</button>}
         </header>
-
-        {/* Phones: chat-first, with the swap and safety one tab away */}
-        <div className="flex shrink-0 border-b border-line md:hidden" role="tablist" aria-label="Session panels">
-          {([["chat", "Chat"], ["swap", "Today's swap"], ["safety", "Safety"]] as const).map(([k, l]) => (
-            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`touch-target flex-1 px-2 text-sm ${tab === k ? "text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted"}`}>{l}</button>
-          ))}
-        </div>
-        {tab === "swap" && <div className="scroll min-h-0 flex-1 bg-panel md:hidden" role="tabpanel">{swap}</div>}
-        {tab === "safety" && <div className="scroll min-h-0 flex-1 bg-panel md:hidden" role="tabpanel">{safety}</div>}
-
+        {reportOpen && <form className="space-y-2 border-b border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); void act("report"); }}><label className="block text-sm text-muted" htmlFor="report-reason">What happened?</label><textarea id="report-reason" className="field" value={reportReason} onChange={(e) => setReportReason(e.target.value)} maxLength={2000} /><button className="btn" disabled={blocking}>Save report</button></form>}
+        <div className="flex shrink-0 border-b border-line md:hidden" role="tablist" aria-label="Session panels">{([['chat','Chat'],['swap',"Today's exchange"],['safety','Safety']] as const).map(([key,label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`touch-target flex-1 px-2 text-sm ${tab === key ? "text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted"}`}>{label}</button>)}</div>
+        {tab === "swap" && <div className="scroll min-h-0 flex-1 md:hidden" role="tabpanel">{swap}</div>}
+        {tab === "safety" && <div className="scroll min-h-0 flex-1 md:hidden" role="tabpanel">{safety}</div>}
         <div className={`min-h-0 flex-1 flex-col ${tab === "chat" ? "flex" : "hidden md:flex"}`}>
-          <ol className="flex shrink-0 overflow-x-auto border-b border-line text-xs" aria-label="Session steps">
-            {PHASES.map((p, i) => (
-              <li key={p} aria-current={i === phase ? "step" : undefined} className={`flex flex-1 items-center gap-1.5 whitespace-nowrap border-r border-line px-3 py-2 last:border-r-0 ${i === phase ? "bg-panel-2 text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : i < phase ? "text-muted" : "text-dim"}`}>
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center border font-mono text-2xs ${i < phase ? "border-success text-success" : i === phase ? "border-text" : "border-line-2"}`}>{i < phase ? "✓" : i + 1}</span>
-                <span className={i === phase ? "" : "sr-only sm:not-sr-only"}>{p}</span>
-              </li>
-            ))}
-          </ol>
+          {syncError && <p className="border-b border-line px-4 py-2 text-xs text-warn" role="status">{syncError}</p>}
+          {notice && <p className="border-b border-line bg-panel px-4 py-2 text-sm text-muted" role="status">{notice}</p>}
           <div ref={box} className="scroll grid-bg min-h-0 flex-1 space-y-3 p-4" role="log" aria-live="polite">
-            {msgs.map((m) => <Bubble key={m.id} m={m} you={you} peer={peer.name} peerColor={peer.color} />)}
-            {sending && <div className="text-xs text-muted"><span className="cursor-blink">▍</span> Checking message…</div>}
-            {blocked && <div className="text-center text-xs text-warn">You blocked {peer.name}. Their messages are hidden.</div>}
+            {!messages.length && <p className="rounded-lg border border-line bg-panel p-4 text-sm text-muted">You&apos;re in the same room. Start with what you already know about {title(room.shared)}, then ask your partner about their piece.</p>}
+            {messages.map((message) => <Bubble key={message.id} message={message} you={you} peer={room.peer.name} color={room.peer.color} />)}
+            <ActivityPanel activity={activity} title="Message and learning guide" onCancel={cancel} onRetry={() => void send()} />
+            {ending && <OperationStatus label="Finishing your session" detail="Saving the shared outcome and refreshing both participants' learning records." />}
+            {blocking && <OperationStatus label="Saving your safety choice" detail="Waiting for local confirmation. Reports remain on this Mac for review." />}
           </div>
-          {ended ? (
-            <div className="enter border-t border-line-2 bg-panel p-4">
-              <h2 className="mb-2 text-md font-semibold">Session complete. Both maps are updated.</h2>
-              <ul className="mb-3 space-y-1.5 text-sm">
-                <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={youStrong} size={16} /> {ctx.aStrong}: deeper understanding · <span className="text-mastery">learned with {peer.name}</span></li>
-                <li className="flex items-center gap-2"><NodeIcon state="explored" mastery={0.5} slug={peerStrong} size={16} /> {ctx.bStrong}: deeper understanding</li>
-                <li className="flex items-center gap-2"><NodeIcon state="seeded" mastery={0} slug="hbm" size={16} /> Suggested next: <span className="text-text">HBM memory</span> <span className="text-muted">· add it from the map or a connected app</span></li>
-              </ul>
-              <button className="btn btn-primary" onClick={() => { dispatch({ t: "match", m: null }); dispatch({ t: "fit" }); router.push("/"); }}>See your map</button>
-            </div>
-          ) : (
-            <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); const v = text.trim(); if (v && !sending) { setText(""); send("me", v); } }}>
-              <input className="field h-11 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder={done ? "Session wrapped. End it to update both maps." : "Your turn…"} maxLength={1000} disabled={done} aria-label="Message" />
-              {done ? <button type="button" className="btn btn-primary h-11 shrink-0" onClick={end}>End &amp; update maps</button> : <button className="btn btn-primary h-11 shrink-0" disabled={sending}>Send</button>}
-            </form>
-          )}
+          {error && <p className="border-t border-err/40 bg-panel px-4 py-2 text-sm text-err" role="alert">{error}</p>}
+          {ended || blocked ? <div className="border-t border-line bg-panel p-4"><h2 className="font-semibold">{blocked ? "This interaction is blocked." : "Your session is saved."}</h2><p className="mt-1 text-sm text-muted">{blocked ? "You won't receive further messages from this person." : "Your learning history now includes this conversation."}</p>{room.summary && <ul className="mt-2 space-y-1 text-sm text-muted">{room.summary.map((line) => <li key={line}>{line}</li>)}</ul>}<button className="btn btn-primary mt-3" onClick={() => { dispatch({ t: "match", m: null }); router.push("/"); }}>Return to your map</button></div> : <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}><input className="field h-11 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder="Share your idea or ask a question…" maxLength={1000} disabled={sending} aria-label="Message" /><button className="btn btn-primary h-11 shrink-0" disabled={sending || !text.trim()}>Send</button></form>}
         </div>
       </section>
-
-      {/* Right: safety (≥1280px) */}
-      <aside className="hidden min-h-0 flex-col border-l border-line bg-panel xl:flex">
-        <header className="flex h-10 items-center border-b border-line px-4"><h2 className="label">Safety</h2></header>
-        {safety}
-      </aside>
+      <aside className="hidden min-h-0 flex-col border-l border-line bg-panel xl:flex"><header className="border-b border-line px-4 py-3"><h2 className="label">Your choices</h2></header>{safety}</aside>
     </div>
   );
 }
 
-function Piece({ label, color, slug, title, demo, nodes }: { label: string; color: string; slug: string; title: string; demo?: boolean; nodes?: Record<string, { state: string; mastery: number }> }) {
-  const n = nodes?.[slug];
-  return (
-    <div className="border-b border-line p-4">
-      <div className="mb-2 flex items-center gap-2 text-xs text-muted"><Head color={color} size={14} /> {label} {demo && <Demo>SEED</Demo>}</div>
-      <div className="flex items-center gap-3 border border-line bg-bg p-3">
-        <NodeIcon state={n?.state ?? "understood"} mastery={n?.mastery ?? 0.8} slug={slug} size={28} />
-        <span className="text-md">{title}</span>
-      </div>
-    </div>
-  );
+function Piece({ label, color, slug, title, nodes }: { label: string; color: string; slug: string; title: string; nodes?: Record<string, { state: string; mastery: number }> }) {
+  const node = nodes?.[slug];
+  return <div className="border-b border-line p-4"><div className="mb-2 flex items-center gap-2 text-xs text-muted"><Head color={color} size={14} />{label}</div><div className="flex items-center gap-3 rounded-lg border border-line bg-bg p-3"><NodeIcon state={node?.state ?? "explored"} mastery={node?.mastery ?? 0.4} slug={slug} size={28} /><span className="text-sm">{title}</span></div></div>;
 }
-
-function Bubble({ m, you, peer, peerColor }: { m: Msg; you: string; peer: string; peerColor: string }) {
-  if (m.who === "system") return <div className="text-center text-xs text-dim">{m.text}</div>;
-  const guide = m.who === "facilitator";
-  const mine = m.who === "me";
-  return (
-    <div className={`enter flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] border px-3 py-2 ${guide ? "border-line-2 border-l-2 border-l-text/60 bg-panel" : mine ? "border-line-2 bg-panel-2" : "border-line bg-panel"}`}>
-        <div className="mb-1 flex items-center gap-2 text-xs text-muted">
-          {guide ? <span className="font-medium text-text">Guide</span> : <span className="flex items-center gap-1.5">{!mine && <Head color={peerColor} size={12} />}{mine ? you : peer}</span>}
-          {m.demo && <Demo />}
-          {m.guard && (
-            m.guard.safe
-              ? <span className="text-success" title="Checked for safety" aria-label="Checked for safety"><ShieldIcon /></span>
-              : <span className="text-err" title="Flagged by the safety check">Flagged</span>
-          )}
-        </div>
-        <p className="whitespace-pre-line text-base">{m.text}</p>
-      </div>
-    </div>
-  );
+function Bubble({ message, you, peer, color }: { message: RoomMessage; you: string; peer: string; color: string }) {
+  if (message.who === "system") return <p className="text-center text-xs text-muted">{message.text}</p>;
+  const mine = message.who === "me", guide = message.who === "facilitator";
+  return <div className={`flex ${mine ? "justify-end" : "justify-start"}`}><div className={`max-w-[90%] rounded-lg border px-3 py-2 sm:max-w-[85%] ${guide ? "border-line-2 border-l-mastery bg-panel" : mine ? "border-line-2 bg-panel-2" : "border-line bg-panel"}`}><div className="mb-1 flex items-center gap-2 text-xs text-muted">{guide ? <span className="font-medium text-text">Learning guide</span> : <span className="flex items-center gap-1.5">{!mine && <Head color={color} size={12} />}{mine ? you : peer}</span>}{message.demo && <span className="text-warn">Rehearsal response</span>}</div><p className="whitespace-pre-line break-words text-base">{message.text}</p></div></div>;
 }

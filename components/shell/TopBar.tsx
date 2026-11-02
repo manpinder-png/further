@@ -5,26 +5,26 @@ import { useStore } from "@/lib/client/store";
 import { Logo } from "@/components/ui/bits";
 import { BUILDER_VIEW } from "@/lib/builder";
 
-// Builder view only: one pill per backend dependency (green live, orange demo, red down).
+// Builder configuration indicators. They do not claim that a paid request was tested.
 const PILLS: { key: string; label: string; title: string }[] = [
-  { key: "muse", label: "Muse Spark", title: "Muse Spark 1.3: expansion, cards, grading, facilitation" },
-  { key: "transcribe", label: "Voice", title: "Muse Voice Transcribe" },
-  { key: "grounding", label: "Grounding", title: "Meta API web search grounding + oEmbed" },
-  { key: "guard", label: "Llama Guard", title: "Llama Guard moderation on partner credits" },
-  { key: "presence", label: "Presence", title: "Supabase Realtime Presence + Broadcast" },
-  { key: "supabase", label: "Postgres", title: "Supabase Postgres + pgvector + Auth + RLS" },
-  { key: "mcp", label: "MCP", title: "MCP server for Meta AI / Muse connectors" },
+  { key: "storage", label: "Local storage", title: "Storage configuration" },
+  { key: "agentProtocol", label: "Agents", title: "Independent agent transport" },
+  { key: "modelMode", label: "Model mode", title: "Live provider or deterministic fixture configuration" },
+  { key: "presence", label: "Presence", title: "Local presence with expiring availability" },
+  { key: "embeddings", label: "Embeddings", title: "Local retrieval configuration" },
+  { key: "transcribe", label: "Voice input", title: "Transcription configuration" },
 ];
 
 const tab = "flex h-full items-center px-3 text-sm transition-colors";
 
 export default function TopBar() {
   const path = usePathname();
-  const { status, match, rail, dispatch } = useStore();
+  const { status, match, currentSessionId, rail, dispatch } = useStore();
   const onMap = path === "/";
-  const sessionLive = !!match && ["pending", "waiting", "accepted"].includes(match.status);
-  const sessionHref = match?.status === "accepted" ? `/session?m=${match.id}` : "/session";
-  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const sessionLive = Boolean(currentSessionId || (match && ["pending", "waiting", "accepted"].includes(match.status)));
+  const sessionId = match?.sessionId ?? currentSessionId;
+  const sessionHref = sessionId ? `/session?s=${encodeURIComponent(sessionId)}` : "/session";
+  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href.split("?")[0]));
 
   const link = (href: string, label: string) => (
     <Link key={href} href={href} aria-current={isActive(href) ? "page" : undefined} className={`${tab} ${isActive(href) ? "text-text shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted hover:text-text"}`}>
@@ -60,14 +60,15 @@ export default function TopBar() {
           </span>
         )}
         {link("/profile", "Profile")}
-        {BUILDER_VIEW && link("/connectors", "Connectors")}
+        {BUILDER_VIEW && link("/connectors", "Agents")}
         {BUILDER_VIEW && link("/ops", "Ops")}
       </nav>
       {BUILDER_VIEW && (
         <div className="ml-auto hidden items-center gap-1.5 2xl:flex">
           {PILLS.map((p) => {
-            const mode = status ? (status as unknown as Record<string, string>)[p.key] : undefined;
-            const col = mode === "live" ? "var(--color-success)" : mode === "demo" ? "var(--color-accent)" : mode === "down" ? "var(--color-err)" : "var(--color-dim)";
+            const value = status ? (status as unknown as Record<string, unknown>)[p.key] : undefined;
+            const mode = typeof value === "string" ? value : value && typeof value === "object" ? JSON.stringify(value) : "checking";
+            const col = ["live", "local", "http-json-v1"].includes(mode) ? "var(--color-success)" : ["demo", "fixture"].includes(mode) ? "var(--color-accent)" : mode === "down" ? "var(--color-err)" : "var(--color-dim)";
             return (
               <span key={p.key} className="chip" title={`${p.title}: ${mode ?? "checking"}`}>
                 <span className="dot" style={{ background: col }} />
