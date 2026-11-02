@@ -7,7 +7,7 @@
     "build": "next build && node scripts/verify-build.mjs",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
+    "test": "node --no-wasm-code-gc --test-concurrency=2 --conditions=react-server --import tsx --test tests/*.test.ts",
     "lint": "eslint .",
     "map": "node scripts/dependency-map.mjs",
     "check": "npm run typecheck && npm run lint && npm test && python3 -m unittest discover -s tests -p 'test_*.py'"

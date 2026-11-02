@@ -13,6 +13,8 @@ This is the v2 publication receipt for `further-final:feature/v2` and `further:f
 
 The launcher now reads `.env.local` before provider checks; explicit local/fixture flags isolate storage from inherited AWS configuration. AWS configuration requires the owner's expected account ID. The historical builder console points developers to the current architecture rather than presenting old RLS/MCP/planning claims as implemented.
 
+The first Linux CI run exposed a native V8 `jit_page.has_value()` abort during repeated PGlite initialization. The test command uses `--no-wasm-code-gc` with two workers, following the [upstream Node 24 issue](https://github.com/nodejs/node/issues/66366). Fresh databases and all assertions remain intact; application runtime flags are unchanged. This is a test-runtime workaround pending the Node backport, not an application assertion failure.
+
 `npm audit --omit=dev` reports zero vulnerabilities. The full audit reports 14 moderate dependency entries from one minimatch advisory in development tooling. The tested lockfile is retained; compatible upstream remediation remains follow-up work.
 
 These packaging checks use fixtures, not fresh hosted inference or fresh cloud deployment. Earlier live Meta/AWS/Facebook receipts follow. **The colleague's two-machine live acceptance is pending**; follow the onboarding test and record its actual result. No `main` merge is part of this publication.

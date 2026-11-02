@@ -2,6 +2,8 @@
 
 Open `Further.local.code-workspace` for the UI, backend, data, agents, retrieval and docs folders. The UI, API, agents and Meta encoder run locally. Select either isolated local storage or the shared AWS data/authentication layer at startup. This v2 snapshot is published on the branches named in the [handoff](HANDOFF.md).
 
+`npm test` runs two test files at a time and disables WASM code GC for those short-lived test processes. This works around the [Node 24 V8/PGlite native crash](https://github.com/nodejs/node/issues/66366) during repeated database creation/close; it does not skip assertions or change application runtime flags. Re-evaluate after Node 24 includes the upstream V8 fix. Keep using the normal launcher for development.
+
 ## On this prepared Mac
 
 From the repository root:
