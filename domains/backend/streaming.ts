@@ -52,8 +52,8 @@ export async function withProgress<T>(req: Request, agentId: AgentId, run: (cont
         if (!signal.aborted) send({type:"result",result});
       }).catch(async error=>{
         if (signal.aborted) return;
-        const safe = await errorResponse(error).json() as {error?:string;code?:string};
-        send({type:"error",error:safe.error ?? "That action could not finish. Please try again.",...(safe.code?{code:safe.code}:{})});
+        const safe = await errorResponse(error).json() as {error?:string;code?:string;retryWithNewKey?:boolean};
+        send({type:"error",error:safe.error ?? "That action could not finish. Please try again.",...(safe.code?{code:safe.code}:{}),...(safe.retryWithNewKey===true?{retryWithNewKey:true}:{})});
       }).finally(close);
     },
     cancel() { cancellation.abort(); if(timer)clearInterval(timer); },

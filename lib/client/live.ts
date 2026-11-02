@@ -5,6 +5,9 @@ import { mutationKey, writableProfile } from "@/domains/ui/contracts";
 
 export const MODE_KEY = "further:data-mode:v2";
 export const IDENTITY_CHANGE_KEY = "further:identity-change:v1";
+let expectedActor: string | null = null;
+/** A consistency check only. The server still obtains authority from its session. */
+export const setExpectedActor = (actorId: string | null) => { expectedActor = actorId; };
 export function getDataMode(): DataMode {
   if (typeof window === "undefined") return "local";
   try { return localStorage.getItem(MODE_KEY) === "demo" ? "demo" : "local"; } catch { return "local"; }
@@ -19,7 +22,15 @@ export async function liveFetch(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   if (typeof init.body === "string") headers.set("content-type", "application/json");
   if (getDataMode() === "demo") headers.set("x-further-demo", "true");
-  return fetch(path, { ...init, credentials: "same-origin", headers });
+  const mutation = (init.method ?? "GET").toUpperCase() !== "GET";
+  const identityMutation = path === "/api/auth/account" || path === "/api/auth/logout";
+  if (mutation && (!path.startsWith("/api/auth/") || identityMutation) && expectedActor && !headers.has("x-further-actor")) headers.set("x-further-actor", expectedActor);
+  const response = await fetch(path, { ...init, credentials: "same-origin", headers });
+  if (response.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/")) {
+    expectedActor = null;
+    window.dispatchEvent(new Event("further:unauthorized"));
+  }
+  return response;
 }
 
 export async function localJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -36,8 +47,8 @@ export const changeIdentity = async (selection: { displayName: string } | { user
   return identity;
 };
 export const hydrateLive = () => localJson<MapSnapshot>("/api/data/bootstrap");
-export const persistEvent = (slug: string, kind: string, payload?: Record<string, unknown>, idempotencyKey = mutationKey()) =>
-  localJson("/api/data/events", { method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify({ slug, kind, payload, idempotencyKey }) });
+export const persistEvent = (slug: string, kind: string, payload?: Record<string, unknown>, idempotencyKey = mutationKey(), actorId?: string | null) =>
+  localJson("/api/data/events", { method: "POST", headers: { "idempotency-key": idempotencyKey, ...(actorId ? {"x-further-actor": actorId} : {}) }, body: JSON.stringify({ slug, kind, payload, idempotencyKey }) });
 export const persistProfile = (profile: LocalProfile) =>
   localJson("/api/data/profile", { method: "PATCH", body: JSON.stringify(writableProfile(profile)) });
 export const getRoom = (id: string) => localJson<RoomSnapshot>(`/api/local/sessions/${encodeURIComponent(id)}`);

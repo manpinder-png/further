@@ -59,10 +59,10 @@ export function learnerModel(nodes: Record<string, UserNode>, events: FEvent[], 
     : "No teaching-format evidence yet — vary formats and watch what lands.";
 
   const summary =
-    `Strengths: ${strengths.slice(0, 3).join(", ") || "none yet"}. ` +
-    `Fading (interest decayed, MD §5.4): ${fading.slice(0, 3).join(", ") || "none"}. ` +
-    `Learns ${style}, pace ${pace}. ` +
-    (avgScore ? `Explain-back average ${avgScore.toFixed(1)}/3 — pitch ${avgScore >= 2 ? "deeper, mechanism-first" : "gentler, example-first"}. ` : "No explain-backs yet — keep the first one inviting. ") +
+    `Prior explanation practice: ${strengths.slice(0, 3).join(", ") || "none yet"}; not verified mastery. ` +
+    `Less recently active: ${fading.slice(0, 3).join(", ") || "none"}; inactivity does not establish forgetting. ` +
+    `Tentative activity pattern: ${style}, pace ${pace}; do not treat this as a fixed learning style. ` +
+    (avgScore ? `AI feedback average ${avgScore.toFixed(1)}/3 — try ${avgScore >= 2 ? "a deeper mechanism or transfer example" : "a gentler worked example"}, then check the learner's own reasoning. ` : "No explain-backs yet — keep the first one inviting. ") +
     formatLine;
 
   return { strengths, fading, frontier, style, pace, formatAffinity, bestFormats, summary };

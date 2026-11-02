@@ -27,10 +27,10 @@ export interface Edge {
 export interface UserNode {
   slug: string;
   interest: number; // 0..1, drives opacity, decays with a 3-day half-life
-  mastery: number; // 0..1, drives size and glow
+  mastery: number; // Legacy name: best AI-reviewed explain-back score / 3, not validated mastery
   state: NodeState;
   lastTouched: number; // epoch ms
-  learnedWith?: string; // "learned with Amit"
+  learnedWith?: string; // Stable peer ID; resolve via authorized peerNames for display
 }
 
 export interface Resource {

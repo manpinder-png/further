@@ -1,0 +1,11 @@
+# Private image storage
+
+The local image-understanding API keeps its existing format/size checks and real Meta perception flow. Once inference succeeds, it saves the private image before saving its owner-scoped `media_assets` record and description/provenance. The UI receives a media ID after both saves succeed; a failed blob or database save remains an error. Explicit fixture images are never persisted.
+
+With `FURTHER_DATA_BACKEND=aurora-data-api`, the server requires `FURTHER_MEDIA_BUCKET` and `AWS_REGION`. The AWS SDK's server credential chain uses the developer's configured profile; no AWS credentials reach the UI. Blobs use `learners/{learner UUID}/{SHA256}` in the stack's private encrypted, versioned S3 bucket. The existing `local_path` field holds the private `s3://` reference, not a public URL. PGlite mode retains files under `FURTHER_LOCAL_DIR/media/{learner UUID}/{SHA256}`; AWS mode never silently falls back to local disk.
+
+`GET /api/media/{media ID}` requires a valid local/Cognito session and repository ownership before loading any blob. Storage rechecks the exact configured bucket, learner prefix, hash, size and permitted image MIME; local files also reject redirected learner directories and symlinks. Responses use `no-store` and `nosniff`. Neither this endpoint nor the understanding response exposes arbitrary storage paths, another learner's images, or public S3 URLs. There is no image listing/discovery endpoint.
+
+S3 and Aurora cannot share a database transaction. A database failure after a successful upload can leave a private unreferenced object; a retry uses the same content-derived key. Automated orphan cleanup and media deletion are future work. Existing local images are retained in PGlite mode and are not automatically migrated to S3. Speech transcription still returns text without saving raw audio.
+
+Implementation follows the official [S3 PutObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html) and [GetObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html), reviewed November 2, 2026. Unit tests mock object storage; live AWS upload/read verification is reported separately in the deployment results.

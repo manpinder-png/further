@@ -11,9 +11,10 @@ import { pathFor, progressFor, suggestNext } from "../insight";
 import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
 import { placeNear } from "../layout";
 import type { SystemStatus } from "../server/config";
-import { getDataMode, hydrateLive, liveFetch, localIdentity, persistEvent, MODE_KEY, IDENTITY_CHANGE_KEY } from "./live";
+import { getDataMode, hydrateLive, liveFetch, localIdentity, persistEvent, setExpectedActor, MODE_KEY, IDENTITY_CHANGE_KEY } from "./live";
 import type { DataMode, MapSnapshot, LocalProfile, Mission } from "@/domains/ui/contracts";
 import { errorMessage, mutationKey, mergeMissions } from "@/domains/ui/contracts";
+import type { AuthSession } from "@/lib/auth-contracts";
 export type { Mission } from "@/domains/ui/contracts";
 
 /** Plain-language activity that isn't a map event (e.g. a match). */
@@ -23,6 +24,7 @@ export interface Note {
 }
 
 export interface SessionResult {
+  id?: string;
   peer: string;
   concepts: string[];
   summary: string[];
@@ -30,6 +32,9 @@ export interface SessionResult {
 }
 
 interface State {
+  auth: AuthSession | null;
+  authReady: boolean;
+  peerNames: Record<string, string>;
   ready: boolean;
   actorId: string | null;
   dataMode: DataMode;
@@ -58,6 +63,9 @@ interface State {
 }
 
 type Action =
+  | { t: "auth"; auth: AuthSession }
+  | { t: "authError"; error: string }
+  | { t: "signedOut" }
   | { t: "hydrate"; now: number; saved?: Saved | null }
   | { t: "hydrateLive"; snapshot: MapSnapshot }
   | { t: "loadError"; error: string }
@@ -101,6 +109,9 @@ let logId = 1;
 let evId = 10_000;
 
 const initial: State = {
+  auth: null,
+  authReady: false,
+  peerNames: {},
   ready: false,
   actorId: null,
   dataMode: "local",
@@ -128,6 +139,13 @@ const initial: State = {
 
 function reducer(s: State, a: Action): State {
   switch (a.t) {
+    case "auth": {
+      const changed = s.auth?.account?.learnerId !== a.auth.account?.learnerId;
+      const signedOut = !a.auth.authenticated && !a.auth.localProfilesEnabled;
+      return { ...(changed || signedOut ? { ...initial, status: s.status } : s), auth: a.auth, authReady: true, ...(signedOut ? { ready: true } : {}) };
+    }
+    case "authError": return { ...s, authReady: true, loadingError: a.error };
+    case "signedOut": return { ...initial, ready: true, authReady: true, auth: s.auth ? { ...s.auth, authenticated: false, account: null } : null, status: s.status };
     case "hydrate": {
       const explorers = seedExplorers(a.now);
       s = { ...s, dataMode: "demo", loadingError: null };
@@ -179,6 +197,8 @@ function reducer(s: State, a: Action): State {
         concepts: Object.fromEntries(placed.map((c) => [c.slug, c])),
         edges: a.snapshot.edges,
         events: a.snapshot.events,
+        peerNames: a.snapshot.peerNames ?? {},
+        sessions: a.snapshot.sessions ? a.snapshot.sessions.filter(room => room.endedAt).map(room => ({id: room.id, peer: room.participants.find(id => id !== a.snapshot.actorId) ?? "a peer", concepts: [room.conceptSlug], summary: room.summary, at: room.endedAt ?? room.createdAt})) : s.sessions,
         actorId: a.snapshot.actorId ?? s.actorId,
         dataMode: "local",
         modelMode: a.snapshot.modelMode ?? s.modelMode,
@@ -239,6 +259,7 @@ interface Ctx extends State {
   say: (agent: AgentName, msg: string, level?: LogEntry["level"], demo?: boolean) => void;
   track: (slug: string, kind: EventKind, payload?: Record<string, unknown>) => Promise<boolean>;
   refreshSnapshot: () => Promise<void>;
+  refreshAuth: () => Promise<void>;
   retryPendingWrites: () => Promise<void>;
 }
 
@@ -258,43 +279,121 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const current = useRef(state);
   current.current = state;
   const refreshing = useRef<Promise<void> | null>(null);
-  const identityReady = useRef(false);
+  const session = useRef<AuthSession | null>(null);
+  const identityGeneration = useRef(0);
+  const authSequence = useRef(0);
+  const authApplied = useRef(0);
+  const legacyIdentityReady = useRef(false);
+  const readAuth = useCallback(async () => {
+    const sequence = ++authSequence.current;
+    const response = await liveFetch("/api/auth/session", { cache: "no-store" });
+    if (!response.ok) throw new Error("We couldn't check your sign-in. Please retry.");
+    const next: AuthSession = await response.json();
+    if (sequence < authApplied.current) return session.current ?? { ...next, authenticated: false, account: null };
+    authApplied.current = sequence;
+    if (session.current?.account?.learnerId !== next.account?.learnerId) {
+      identityGeneration.current++;
+      failedWrites.current.clear();
+    }
+    // Google returns through a full-page redirect. Broadcast the identity change
+    // here too, so already-open tabs cannot keep another account's private view.
+    try {
+      const markerKey = "further:account-marker:v1";
+      const marker = next.account?.learnerId ?? "signed-out";
+      if (localStorage.getItem(markerKey) !== marker) {
+        localStorage.setItem(markerKey, marker);
+        localStorage.setItem(IDENTITY_CHANGE_KEY, mutationKey());
+      }
+    } catch { /* Storage-disabled browsers still use the server session. */ }
+    session.current = next;
+    setExpectedActor(next.account?.learnerId ?? null);
+    dispatch({ t: "auth", auth: next });
+    return next;
+  }, []);
   const refreshRequested = useRef(0);
   const refreshSnapshot = useCallback(async () => {
     refreshRequested.current++;
     if (refreshing.current) return refreshing.current;
     const request = (async () => {
-      if (!identityReady.current) { await localIdentity(); identityReady.current = true; }
+      const auth = session.current ?? await readAuth();
+      if (!auth.authenticated) {
+        if (!auth.localProfilesEnabled) return;
+        if (!legacyIdentityReady.current) { const identity = await localIdentity(); setExpectedActor(identity.actorId); legacyIdentityReady.current = true; }
+      }
       // A mutation completed during an older read needs a fresh trailing read.
       // Resolve all callers only after the newest requested snapshot is applied.
       let completed = 0;
       while (completed < refreshRequested.current) {
+        if (!session.current?.authenticated && !session.current?.localProfilesEnabled) return;
         const requested = refreshRequested.current;
+        const generation = identityGeneration.current;
         if (getDataMode() === "demo") {
           dispatch({ t: "hydrate", now: Date.now(), saved: load() });
-        } else dispatch({ t: "hydrateLive", snapshot: await hydrateLive() });
+        } else {
+          const snapshot = await hydrateLive();
+          if (generation !== identityGeneration.current) continue;
+          if (session.current?.account && snapshot.actorId !== session.current.account.learnerId) {
+            // A cookie changed in another tab while this fetch was in flight.
+            await readAuth();
+            if (session.current?.account && snapshot.actorId !== session.current.account.learnerId) throw new Error("Your saved data could not be matched to this account. Please reload.");
+            continue;
+          }
+          dispatch({ t: "hydrateLive", snapshot });
+        }
         completed = requested;
       }
     })()
       .catch((error) => {
-        identityReady.current = false;
-        dispatch({ t: "loadError", error: errorMessage(error, "Your map couldn't load. Your saved data has not been replaced.") });
+        legacyIdentityReady.current = false;
+        if (session.current?.authenticated || session.current?.localProfilesEnabled) dispatch({ t: "loadError", error: errorMessage(error, "Your map couldn't load. Your saved data has not been replaced.") });
         throw error;
       })
       .finally(() => { refreshing.current = null; });
     refreshing.current = request;
     return request;
+  }, [readAuth]);
+
+  const refreshAuth = useCallback(async () => {
+    try {
+      await readAuth();
+      await refreshSnapshot();
+    } catch (error) {
+      dispatch({ t: "authError", error: errorMessage(error, "We couldn't check your sign-in. Please retry.") });
+      throw error;
+    }
+  }, [readAuth, refreshSnapshot]);
+
+  useEffect(() => {
+    const expired = () => {
+      identityGeneration.current++;
+      session.current = null;
+      authApplied.current = ++authSequence.current;
+      setExpectedActor(null);
+      legacyIdentityReady.current = false;
+      failedWrites.current.clear();
+      dispatch({ t: "signedOut" });
+    };
+    window.addEventListener("further:unauthorized", expired);
+    return () => window.removeEventListener("further:unauthorized", expired);
   }, []);
 
   useEffect(() => {
     if (boot.current) return;
     boot.current = true;
-    void refreshSnapshot().catch(() => undefined);
+    void refreshAuth().catch(() => undefined);
     liveFetch("/api/health")
       .then((r) => r.json())
       .then((s: SystemStatus) => dispatch({ t: "status", s }))
       .catch(() => dispatch({ t: "log", e: { agent: "SYSTEM", msg: "Health check unavailable", level: "warn" } }));
-  }, [refreshSnapshot]);
+  }, [refreshAuth]);
+
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === "visible") void refreshAuth().catch(() => undefined);
+    };
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
+  }, [refreshAuth]);
 
   // Rehearsal data remains separate from durable local users.
   useEffect(() => {
@@ -305,7 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Heartbeats are independent of learning or requesting a match.
   useEffect(() => {
-    if (!state.ready || state.dataMode !== "local") return;
+    if (!state.ready || state.dataMode !== "local" || (!state.auth?.authenticated && !state.auth?.localProfilesEnabled)) return;
     let alive = true;
     const heartbeat = async () => {
       if (document.visibilityState === "hidden") return;
@@ -332,29 +431,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const visible = () => { if (document.visibilityState === "visible") void heartbeat(); };
     document.addEventListener("visibilitychange", visible);
     return () => { alive = false; clearInterval(interval); document.removeEventListener("visibilitychange", visible); };
-  }, [state.ready, state.dataMode, state.profile.openToMatch]);
+  }, [state.ready, state.dataMode, state.profile.openToMatch, state.auth]);
 
   const nodes = useMemo(() => replay(state.events), [state.events]);
   const say = useCallback<Ctx["say"]>((agent, msg, level = "info", demo) => dispatch({ t: "log", e: { agent, msg, level, demo } }), []);
   // Writes stay in order so rapid actions cannot race a later snapshot.
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
-  type PendingEvent = { slug: string; kind: EventKind; payload?: Record<string, unknown>; key: string };
+  type PendingEvent = { slug: string; kind: EventKind; payload?: Record<string, unknown>; key: string; actorId: string | null; generation: number };
   const failedWrites = useRef(new Map<string, PendingEvent>());
   const enqueue = useCallback((event: PendingEvent) => {
     dispatch({ t: "pending", delta: 1 });
     const write = writeQueue.current.then(async () => {
       try {
-        await persistEvent(event.slug, event.kind, event.payload, event.key);
+        if (event.generation !== identityGeneration.current || event.actorId !== current.current.actorId) {
+          failedWrites.current.delete(event.key);
+          return false;
+        }
+        await persistEvent(event.slug, event.kind, event.payload, event.key, event.actorId);
+        if (event.generation !== identityGeneration.current) return false;
         failedWrites.current.delete(event.key);
         await refreshSnapshot();
         if (!failedWrites.current.size) dispatch({ t: "saveError", error: null });
         return true;
       } catch (error) {
+        if (event.generation !== identityGeneration.current) return false;
         failedWrites.current.set(event.key, event);
         dispatch({ t: "saveError", error: errorMessage(error, "Your latest action couldn't be saved. Please retry it.") });
         return false;
       } finally {
-        dispatch({ t: "pending", delta: -1 });
+        if (event.generation === identityGeneration.current) dispatch({ t: "pending", delta: -1 });
       }
     });
     writeQueue.current = write.then(() => undefined);
@@ -365,13 +470,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ t: "event", slug, kind, payload });
       return Promise.resolve(true);
     }
-    return enqueue({ slug, kind, payload, key: mutationKey() });
+    return enqueue({ slug, kind, payload, key: mutationKey(), actorId: current.current.actorId, generation: identityGeneration.current });
   }, [enqueue]);
   const retryPendingWrites = useCallback(async () => {
     for (const event of [...failedWrites.current.values()]) await enqueue(event);
   }, [enqueue]);
 
-  const value = useMemo(() => ({ ...state, nodes, dispatch, say, track, refreshSnapshot, retryPendingWrites }), [state, nodes, say, track, refreshSnapshot, retryPendingWrites]);
+  const value = useMemo(() => ({ ...state, nodes, dispatch, say, track, refreshSnapshot, refreshAuth, retryPendingWrites }), [state, nodes, say, track, refreshSnapshot, refreshAuth, retryPendingWrites]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
 
@@ -409,7 +514,7 @@ export function useSuggestions() {
 
 /** The ordered "Your path" list. */
 export function usePath() {
-  const { concepts, edges, nodes } = useStore();
+  const { concepts, edges, nodes, events } = useStore();
   const suggestions = useSuggestions();
-  return useMemo(() => pathFor(concepts, edges, nodes, suggestions), [concepts, edges, nodes, suggestions]);
+  return useMemo(() => pathFor(concepts, edges, nodes, suggestions, Date.now(), events), [concepts, edges, nodes, suggestions, events]);
 }

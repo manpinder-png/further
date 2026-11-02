@@ -1,28 +1,41 @@
-# Further
+# Further — v2 handoff
 
-Further turns a question into a personal learning map, helps someone explore it, and connects willing learners around a shared concept. AI supports the work; people do the explaining and reasoning.
+Further turns a question into a personal knowledge map and helps willing people find someone to learn with. Meta agents clarify intent, guide learning and facilitate conversation; people do the explaining and reasoning.
 
-This local development version builds on the latest merged Connor/Sirpreet `iteration-nov1` UI and backend. It adds independently callable agents, a durable local PostgreSQL data model, owner-scoped vector search, real two-person sessions and explicit model provenance. Current work is uncommitted on `feature/agentic-local`; nothing is deployed or pushed.
+This snapshot keeps the v1 map-centred layout and adds nested knowledge navigation, semantic Geomind matching, shared AWS data and Cognito authentication. **v2 is the handoff milestone; the agent protocol remains Further HTTP JSON v1.**
+
+Start here:
+
+- **Run it:** [onboarding](docs/ONBOARDING.md) — prerequisites, credentials, commands and a two-person live test.
+- **Continue development or give this repo to a coding agent:** [handoff](docs/HANDOFF.md).
+- **Understand the system:** [architecture and diagrams](docs/ARCHITECTURE.md), [data model](docs/data/README.md), [agent contracts](docs/agents/README.md).
+- **Check what was verified:** [verification](docs/VERIFICATION.md). Functional tests are separate from scale and model-quality claims.
+
+## Runtime at a glance
+
+| Runs on each developer's machine | Shared AWS development layer |
+|---|---|
+| Next.js UI, APIs and agent orchestration | Aurora PostgreSQL Serverless + pgvector through RDS Data API |
+| Local Meta RoBERTa embedding service | Cognito email/password and Facebook sign-in |
+| Server-side calls to direct Meta/Baseten APIs | Private S3 images and existing profile/learning tables |
+
+The browser receives no developer AWS credentials or inference keys. All product inference uses Meta models. The OpenAI SDK is the transport library. There is no cloud application/API deployment in this snapshot.
+
+## After first-time onboarding
 
 ```sh
-python3 scripts/dev.py
+python3 scripts/configure-aws.py --profile further-dev --region us-east-1 --stack further-dev --account YOUR_AWS_ACCOUNT_ID
+python3 scripts/dev.py --aws
 ```
 
-Open http://127.0.0.1:3000 . For an explicit offline model rehearsal, use `python3 scripts/dev.py --fixture`.
+Replace the account placeholder with the shared development account ID supplied by the owner. Open **http://127.0.0.1:3000**. See live configuration and dependencies at **http://127.0.0.1:3000/architecture**.
 
-- [Local setup, storage and tests](docs/LOCAL_DEVELOPMENT.md)
-- [Architecture and dependency diagrams](docs/ARCHITECTURE.md)
-- [Data model and ER diagram](docs/data/README.md)
-- [Agent contracts and invocation](docs/agents/README.md)
-- [Local embedding model and its limits](docs/retrieval/README.md)
-- [UI flows and persistence](docs/ui/README.md)
-- [Generated source dependency inventory](docs/dependency-map.json)
-- [Verification results and remaining limits](docs/VERIFICATION.md)
+Default `python3 scripts/dev.py --local` uses your own PGlite database and local accounts. `--local --fixture` is an explicitly labelled offline inference rehearsal. Changing storage modes does not migrate or link accounts, maps or images.
 
-The live `/architecture` page shows the domains, agent registry, schema tables and local health. Open `Further.local.code-workspace` to work on the domains side by side. Run `npm run map` after moving dependencies.
+## Current boundaries
 
-Only standard Meta models and the Baseten hackathon Meta model serve product inference. The OpenAI SDK supplies the client transport; it does not route inference to OpenAI. Credentials stay server-side. App data, uploaded media and embeddings stay local; explicitly requested model calls use the configured hosted Meta/Baseten APIs.
+Facebook login is verified for an app-role account; the Meta app remains unpublished. Other testers can use Cognito email/password signup or be added to the Facebook app's test roles. Google OAuth, physical geography, TTS/video calling and cloud agent hosting remain parked. The feature encoder and matching thresholds are experimental. Population-scale retrieval, distributed workers and production abuse operations are not established.
 
-AI experiences stream provider output and show actual agent, tool, delegation and save activity. Drafts remain provisional until the final result arrives. Learners can cancel waiting and retry; interrupted drafts never become completed learning evidence.
+The team handoff branch is **`feature/mani-v2` in `further`**. The delivery snapshot is **`feature/v2` in `further-final`**. Neither publication merges into `main`.
 
-The local persona chooser, PGlite single-process database and HTTP polling are development infrastructure. Production authentication, native PostgreSQL adapter, distributed workers, push updates for rooms/presence, full MCP/A2A interoperability, speech output and measured scale are still future work. Fixture output and seed data are labelled; failed providers never silently turn into demo successes.
+More detail: [knowledge map / Geomind](docs/GEOMIND.md), [authentication](docs/AUTHENTICATION.md), [AWS deployment](docs/AWS_DEPLOYMENT.md), [retrieval](docs/retrieval/README.md), [media](docs/MEDIA_STORAGE.md), [UI](docs/ui/README.md), [dependency inventory](docs/dependency-map.json). Older design/discussion documents describe earlier proposals; use the handoff and current architecture for implementation.

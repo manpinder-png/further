@@ -10,11 +10,16 @@
     "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
     "lint": "eslint .",
     "map": "node scripts/dependency-map.mjs",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test && python3 -m unittest discover -s tests -p 'test_*.py'"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1161.0",
+    "@aws-sdk/client-rds-data": "^3.1161.0",
+    "@aws-sdk/client-s3": "^3.1161.0",
     "@electric-sql/pglite": "^0.5.14",
     "@electric-sql/pglite-pgvector": "^0.0.15",
+    "google-auth-library": "^11.3.2",
+    "jose": "^6.2.15",
     "mermaid": "^12.2.0",
     "next": "^15.5.28",
     "openai": "^7.47.0",
@@ -38,5 +43,10 @@
   },
   "engines": {
     "node": ">=24 <25"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.32"
+    }
   }
 }

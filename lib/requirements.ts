@@ -1,7 +1,8 @@
-// Where every plan requirement lives (DESIGN §5). Rendered on /ops.
-// Update `status` as backend work lands: "ui" = UI + demo path done, "stub" = typed
-// hook exists but not wired, "wired" = real implementation awaiting project
-// credentials/migration, "live" = verified against the configured service.
+// Historical DESIGN §5 planning data, retained for the retired builder console.
+// This is not the current implementation inventory or service verification.
+// Read docs/CODE_MAP.md and docs/ARCHITECTURE.md, or open /architecture, for the
+// current system. These labels describe planning progress only; even "live"
+// does not establish that a configured service has been verified today.
 export type Status = "live" | "wired" | "ui" | "stub" | "todo";
 
 export interface Req {
@@ -23,15 +24,15 @@ export const FUNCTIONAL: Req[] = [
   { id: "F7", name: "Presence matching, reason, handshake, 60s", owner: "Amit", ui: "Explorers panel, MatchModal", hook: "POST /api/match · atomic RPC · durable polling", status: "wired" },
   { id: "F8", name: "Jigsaw session + post-session updates", owner: "Amit / Connor", ui: "/session room, phases, summary", hook: "guarded session_messages · atomic finish RPC", status: "wired" },
   { id: "F9", name: "Three-layer profile", owner: "Sirpreet", ui: "/profile", hook: "authenticated PATCH → profiles (static_profile, preferences, current_intent)", status: "wired" },
-  { id: "F10", name: "MCP server, 4 tools, per-user tokens", owner: "Connor", ui: "/connectors console, Profile token", hook: "POST /api/mcp · lib/mcp-tools.ts · mcp_tokens table", status: "ui" },
+  { id: "F10", name: "Planned standards-compliant off-app connector", owner: "Connor", ui: "Historical connector prototype retired", hook: "/api/mcp returns 410; authenticated /api/agents exists; MCP/A2A adapters are not implemented", status: "todo" },
 ];
 
 export const NONFUNCTIONAL: Req[] = [
-  { id: "N1", name: "First node < 2.5s · cached card < 500ms · match < 30s", owner: "Connor", ui: "Timings printed in Agent log", hook: "measured client-side per run", status: "ui" },
+  { id: "N1", name: "Latency targets: first node < 2.5s · cached card < 500ms · match < 30s", owner: "Connor", ui: "Historical performance targets", hook: "Not established performance guarantees; see docs/VERIFICATION.md", status: "todo" },
   { id: "N2", name: "Mobile-first, works on demo phones", owner: "Sirpreet", ui: "Bottom sheets, pinned command bar", hook: "—", status: "ui" },
-  { id: "N3", name: "RLS, rate limits, Zod, server-only secrets, non-contributor model", owner: "Connor", ui: "Ops → Production trust", hook: "RLS migrations · authenticated server routes · lib/schemas", status: "wired" },
-  { id: "N4", name: "Llama Guard on all peer messages, block/report, 18+", owner: "Amit", ui: "Session ✓ GUARD chips, Block, Report, Profile 18+", hook: "lib/server/moderation.ts", status: "wired" },
-  { id: "N5", name: "Tech/AI domain only; schema has `domain`", owner: "Manpinder", ui: "World · ai-tech label", hook: "concepts.domain", status: "live" },
+  { id: "N3", name: "Authenticated server authorization, validation and server-only secrets", owner: "Connor", ui: "Current trust boundaries are documented separately", hook: "Backend ownership checks; legacy Supabase RLS is not the deployed authorization layer", status: "wired" },
+  { id: "N4", name: "Block/report and adult eligibility; automated classifier remains planned", owner: "Amit", ui: "Session moderation status must state its limitations", hook: "No Llama Guard/content classifier is configured for message delivery", status: "todo" },
+  { id: "N5", name: "Historical Tech/AI-only scope proposal", owner: "Manpinder", ui: "Original domain label", hook: "Not a current product domain restriction", status: "ui" },
   { id: "N6", name: "Shared, cached concepts and resources", owner: "Connor", ui: "Card shows “cached per concept”", hook: "global concepts/aliases; card-cache migration", status: "wired" },
 ];
 
@@ -39,43 +40,42 @@ export const META_MODELS = [
   { model: "Muse Spark 1.3", job: "Expansion, node cards, explain-back grading, session facilitation", where: "/api/expand · /api/card · /api/explain · /api/session", key: "muse" },
   { model: "Web search grounding", job: "Finds 3 candidate sources per concept", where: "/api/card (GROUND)", key: "grounding" },
   { model: "Muse Voice Transcribe", job: "Curiosity capture and explain-back by voice", where: "/api/transcribe", key: "transcribe" },
-  { model: "Muse Image", job: "Decorative cover tile per concept, cached", where: "Inspector cover", key: "image" },
-  { model: "Llama Guard", job: "Moderates every peer message before delivery", where: "/api/session/:id/message", key: "guard" },
-  { model: "MCP → Meta AI connectors", job: "Off-app capture: add_curiosity and 3 more tools", where: "/api/mcp", key: "mcp" },
-  { model: "SAM 3.1 (stretch)", job: "Curiosity Lens: segment a photo, tap to add", where: "Lens modal", key: "lens" },
-  { model: "Muse Code", job: "Used to build part of this app", where: "Write-up", key: "code" },
+  { model: "Muse Image (historical proposal)", job: "Planned decorative cover generation; not implemented", where: "Image understanding uses the configured Meta perception route instead", key: "image" },
+  { model: "Llama Guard (planned)", job: "Automated content classification is not configured", where: "Messages currently have validation, block and report controls", key: "guard" },
+  { model: "MCP/A2A adapters (planned protocol work)", job: "Off-app standards integration is not implemented", where: "Retired /api/mcp returns 410; /api/agents is the current authenticated interface", key: "mcp" },
+  { model: "SAM 3.1 (historical stretch proposal)", job: "Photo segmentation is not implemented", where: "Planned Lens experience", key: "lens" },
+  { model: "Muse Code (historical proposal)", job: "Development attribution is not verified by this plan", where: "Do not use as evidence of model usage", key: "code" },
 ];
 
 export const TRUST = [
-  { check: "RLS on every user table", where: "supabase/migrations/0001_init.sql + 0002", status: "wired" as Status },
+  { check: "Database RLS remains a hardening task", where: "Current application authorization uses backend ownership checks; legacy Supabase migrations are not the deployed schema", status: "todo" as Status },
   { check: "Per-user LLM rate limit · 30 expansions/hour", where: "lib/server/ratelimit.ts (in-memory → Postgres)", status: "stub" as Status },
-  { check: "All inputs validated with Zod", where: "lib/schemas.ts + every route", status: "live" as Status },
+  { check: "Request validation and authenticated backend checks", where: "See current route ownership and validation boundaries in docs/CODE_MAP.md", status: "wired" as Status },
   { check: "Errors to Sentry", where: "lib/server/observability.ts", status: "stub" as Status },
   { check: "No secrets in client bundle", where: "lib/server/* import 'server-only'", status: "live" as Status },
   { check: "Source URLs host-allowlisted (no SSRF)", where: "/api/resources/verify", status: "live" as Status },
-  { check: "20 concurrent simulated users, no failures", where: "Load test (Amit, Tue)", status: "todo" as Status },
-  { check: "User data only on non-contributor model", where: "env.metaModel vs metaDevModel", status: "live" as Status },
+  { check: "Load-test target: 20 concurrent simulated users", where: "Not a verified result; see docs/VERIFICATION.md", status: "todo" as Status },
+  { check: "Meta-only runtime inference policy", where: "Current provider routing and allowed models: /architecture and domains/agents", status: "wired" as Status },
 ];
 
 export const PIPELINE = [
   { lane: "Solo loop", steps: [
     { name: "TRANSCRIBE", model: "Voice Transcribe", route: "/api/transcribe", key: "transcribe" },
     { name: "EXPAND", model: "Muse Spark · stream", route: "/api/expand", key: "muse" },
-    { name: "CANONICALIZE", model: "embeddings ≥ 0.88", route: "pgvector", key: "supabase" },
+    { name: "CANONICALIZE", model: "Validated concept IDs and aliases; no fixed vector merge threshold", route: "lib/canonicalize.ts", key: "live" },
     { name: "GROUND", model: "web search", route: "/api/card", key: "grounding" },
     { name: "OEMBED", model: "YouTube oEmbed / HTTP", route: "/api/resources/verify", key: "live" },
     { name: "GRADE", model: "Muse Spark · rubric", route: "/api/explain", key: "muse" },
   ] },
   { lane: "Social loop", steps: [
-    { name: "PRESENCE", model: "Supabase Presence", route: "channel explorers", key: "presence" },
-    { name: "MATCH", model: "score job · 15s", route: "/api/match", key: "live" },
-    { name: "HANDSHAKE", model: "both accept · 60s", route: "match_requests", key: "supabase" },
-    { name: "GUARD", model: "Llama Guard", route: "/api/session/:id/message", key: "guard" },
+    { name: "PRESENCE", model: "Persisted expiry and HTTP polling", route: "/api/local/presence", key: "presence" },
+    { name: "MATCH", model: "Semantic retrieval and deterministic eligibility/ranking", route: "/api/match", key: "live" },
+    { name: "HANDSHAKE", model: "Mutual acceptance with persisted expiry", route: "/api/match", key: "presence" },
+    { name: "GUARD (PLANNED)", model: "No automated content classifier configured", route: "Block/report and message validation are available", key: "guard" },
     { name: "FACILITATE", model: "Muse Spark · jigsaw", route: "/api/session/:id/message", key: "muse" },
   ] },
-  { lane: "Off-app", steps: [
-    { name: "MCP", model: "add_curiosity", route: "/api/mcp", key: "mcp" },
-    { name: "INBOX", model: "Realtime broadcast", route: "/api/inbox (poll)", key: "presence" },
-    { name: "EXPAND", model: "same pipeline", route: "/api/expand", key: "muse" },
+  { lane: "Off-app protocol roadmap (not implemented)", steps: [
+    { name: "MCP/A2A", model: "Standards adapter planned", route: "Legacy /api/mcp retired (410)", key: "mcp" },
+    { name: "AGENT API", model: "Current authenticated callable agent interface", route: "/api/agents", key: "live" },
   ] },
 ];

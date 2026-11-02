@@ -23,9 +23,11 @@ export type Mode = "live" | "demo" | "down" | "local" | "configured";
 export function systemStatus() {
   const fixture=process.env.FURTHER_MODEL_MODE==="fixture";
   const inference:Mode=fixture?"demo":env.metaKey?"configured":"down";
+  const cloud=process.env.FURTHER_DATA_BACKEND==="aurora-data-api";
   return {muse:inference,agents:inference,transcribe:fixture?"down" as Mode:inference,
-    grounding:inference,image:inference,storage:"local" as Mode,presence:"local" as Mode,
+    grounding:inference,image:inference,storage:(cloud?"configured":"local") as Mode,presence:(cloud?"configured":"local") as Mode,
     embeddings:"down" as Mode,supabase:"down" as Mode,guard:"down" as Mode,mcp:"down" as Mode,sentry:"down" as Mode,
-    model:fixture?"explicit-offline-fixture":env.metaModel,modelMode:fixture?"fixture":"live",mode:"local",agentProtocol:"http-json-v1"};
+    model:fixture?"explicit-offline-fixture":env.metaModel,modelMode:fixture?"fixture":"live",mode:"local",agentProtocol:"http-json-v1",
+    dataBackend:cloud?"aurora-data-api":"pglite",authProvider:process.env.FURTHER_AUTH_PROVIDER==="cognito"?"cognito":"local",mediaBackend:cloud?"s3":"local",appRuntime:"local"};
 }
 export type SystemStatus = ReturnType<typeof systemStatus>;

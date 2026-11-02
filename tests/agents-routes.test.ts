@@ -12,13 +12,14 @@ import { GET as card } from "../app/api/card/[slug]/route.ts";
 import { sessionCookie } from "../domains/backend/identity.ts";
 import { createRepository } from "../domains/data/repository.ts";
 import type { FurtherRepository } from "../domains/data/contracts.ts";
+import { invokeAgent } from "../domains/backend/agents.ts";
 
 let repo: FurtherRepository;
 let directory: string;
 let cookie: string;
 const actorId = randomUUID();
 const oldFetch = globalThis.fetch;
-const oldEnv = { local: process.env.FURTHER_LOCAL_DIR, mode: process.env.FURTHER_MODEL_MODE, key: process.env.META_API_KEY, model: process.env.META_MODEL };
+const oldEnv = { local: process.env.FURTHER_LOCAL_DIR, mode: process.env.FURTHER_MODEL_MODE, key: process.env.META_API_KEY, model: process.env.META_MODEL, profiles: process.env.FURTHER_ENABLE_LOCAL_PROFILES };
 const shared = globalThis as typeof globalThis & { __furtherLocalRepository?: Promise<FurtherRepository> };
 let calls = 0;
 let response: () => Response = () => { throw new Error("Unexpected external request"); };
@@ -26,6 +27,7 @@ let response: () => Response = () => { throw new Error("Unexpected external requ
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), "further-agent-routes-"));
   process.env.FURTHER_LOCAL_DIR = directory;
+  process.env.FURTHER_ENABLE_LOCAL_PROFILES = "1";
   process.env.FURTHER_MODEL_MODE = "live";
   process.env.META_API_KEY = "fake-key-never-sent";
   process.env.META_MODEL = "muse-spark-1.3";
@@ -43,7 +45,7 @@ before(async () => {
 });
 after(async () => {
   globalThis.fetch = oldFetch;
-  for (const [key, value] of [["FURTHER_LOCAL_DIR", oldEnv.local], ["FURTHER_MODEL_MODE", oldEnv.mode], ["META_API_KEY", oldEnv.key], ["META_MODEL", oldEnv.model]]) {
+  for (const [key, value] of [["FURTHER_LOCAL_DIR", oldEnv.local], ["FURTHER_MODEL_MODE", oldEnv.mode], ["META_API_KEY", oldEnv.key], ["META_MODEL", oldEnv.model], ["FURTHER_ENABLE_LOCAL_PROFILES", oldEnv.profiles]]) {
     if (value === undefined) delete process.env[key!]; else process.env[key!] = value;
   }
   delete shared.__furtherLocalRepository;
@@ -136,4 +138,60 @@ test("voice routes reject non-PCM uploads and provide sample text only in explic
   const form = new FormData(); form.append("audio", wav()); form.append("purpose", "explain");
   const res = await transcribe(new Request("http://localhost:3000/api/transcribe", { method: "POST", headers: { cookie, "x-further-demo": "true" }, body: form }));
   assert.equal(res.status, 200); assert.equal((await res.json()).demo, true); assert.equal(calls, beforeCalls);
+});
+
+test("planning and peer advice save their run without changing the learner map, intent or metadata",async()=>{
+  const before=await repo.getSnapshot(actorId);
+  const previous=process.env.FURTHER_MODEL_MODE;
+  process.env.FURTHER_MODEL_MODE="fixture";
+  try {
+    for(const objective of ["plan","recommend"] as const){
+      const result=await invokeAgent(actorId,"knowledge-map",{text:`Read-only ${objective} for my next step`,objective},{idempotencyKey:`read-only-${objective}`});
+      assert.equal(result.persisted,true);assert.deepEqual(result.data.concepts,[]);
+      const saved=await repo.getAgentRun(actorId,result.runId);
+      assert.equal(saved?.status,"succeeded");assert.equal(saved?.input.objective,objective);
+    }
+  }finally{process.env.FURTHER_MODEL_MODE=previous;}
+  const after=await repo.getSnapshot(actorId);
+  assert.deepEqual(after.concepts,before.concepts);
+  assert.deepEqual(after.events,before.events);
+  assert.deepEqual(after.metadata,before.metadata);
+  assert.equal(after.profile.currentIntent,before.profile.currentIntent);
+});
+
+test("saved lessons restore without inference across fresh requests; generation stays explicit and owner/depth/mode scoped", async () => {
+  const lesson = { mode: "solo", title: "Parallel work", body: "Independent pieces can be computed at the same time. Compare two workers with one, then consider coordination costs.", format: "short-read", branches: [], adaptedNote: "A concrete comparison." };
+  const startCalls = calls;
+  response = () => modelResponse(lesson);
+  const firstResponse = await teach(request("/api/teach", { slug: "gpu", depth: 1 }));
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.restored, false); assert.equal(calls, startCalls + 1);
+  const restored = await (await teach(request("/api/teach", { slug: "gpu", depth: 1 }))).json();
+  assert.equal(restored.restored, true); assert.equal(restored.runId, first.runId); assert.equal(calls, startCalls + 1);
+
+  const deeper = await (await teach(request("/api/teach", { slug: "gpu", depth: 2 }))).json();
+  assert.equal(deeper.restored, false); assert.notEqual(deeper.runId, first.runId); assert.equal(calls, startCalls + 2);
+  response = () => modelResponse({ ...lesson, title: "A different example" });
+  const regenerated = await (await teach(request("/api/teach", { slug: "gpu", depth: 1, regenerate: true }, { "idempotency-key": "explicit-different-example" }))).json();
+  assert.equal(regenerated.restored, false); assert.equal(regenerated.title, "A different example"); assert.equal(calls, startCalls + 3);
+  const latest = await (await teach(request("/api/teach", { slug: "gpu", depth: 1 }))).json();
+  assert.equal(latest.restored, true); assert.equal(latest.runId, regenerated.runId); assert.equal(calls, startCalls + 3);
+
+  const oldMode = process.env.FURTHER_MODEL_MODE;
+  process.env.FURTHER_MODEL_MODE = "fixture";
+  try {
+    const fixture = await (await teach(request("/api/teach", { slug: "gpu", depth: 1 }))).json();
+    assert.equal(fixture.demo, true); assert.equal(fixture.restored, false); assert.notEqual(fixture.runId, regenerated.runId);
+  } finally { process.env.FURTHER_MODEL_MODE = oldMode; }
+  const liveAgain = await (await teach(request("/api/teach", { slug: "gpu", depth: 1 }))).json();
+  assert.equal(liveAgain.demo, false); assert.equal(liveAgain.runId, regenerated.runId); assert.equal(calls, startCalls + 3);
+
+  const other = randomUUID(); await repo.ensureUser(other, "Another learner");
+  await repo.addConcepts(other, [{ slug: "gpu", title: "Graphics processors", hook: "Parallel work", domain: "ai-tech" }]);
+  const otherCookie = sessionCookie(other).split(";")[0];
+  const separate = await (await teach(request("/api/teach", { slug: "gpu", depth: 1 }, { cookie: otherCookie }))).json();
+  assert.equal(separate.restored, false); assert.notEqual(separate.runId, regenerated.runId); assert.equal(calls, startCalls + 4);
+  const missing = await teach(request("/api/teach", { slug: "not-on-my-path" }));
+  assert.equal(missing.status, 404); assert.equal(calls, startCalls + 4);
 });

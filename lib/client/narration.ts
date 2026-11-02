@@ -12,7 +12,7 @@ const LIFE = 6500;
 let cid = 1;
 
 export function useNarration(suggestions: Suggestion[], paused = false) {
-  const { ready, concepts, nodes, events, edges, missions } = useStore();
+  const { ready, concepts, nodes, events, edges, missions, peerNames } = useStore();
   const [captions, setCaptions] = useState<Caption[]>([]);
   const prev = useRef<{ concepts: Set<string>; states: Map<string, string>; lastEvent: number; suggestions: Set<string> } | null>(null);
   const addRun = useRef<{ key: string; slugs: string[]; at: number; mission?: string } | null>(null);
@@ -57,7 +57,7 @@ export function useNarration(suggestions: Suggestion[], paused = false) {
     for (const [slug, st] of snap.states) {
       const was = before.states.get(slug);
       if (!was || was === st) continue;
-      if (st === "understood") out.push({ key: `up-${slug}`, text: `${title(slug)} is understood. It moved closer to you.`, tone: "up" });
+      if (st === "understood") out.push({ key: `up-${slug}`, text: `Your explanation of ${title(slug)} is saved. Try applying it next.`, tone: "up" });
       else if (st === "explored" && was === "seeded") out.push({ key: `up-${slug}`, text: `${title(slug)} is lighting up`, tone: "up" });
     }
 
@@ -66,9 +66,9 @@ export function useNarration(suggestions: Suggestion[], paused = false) {
     const sessionPeers = new Set<string>();
     for (const e of fresh) {
       if (e.kind === "skip") out.push({ key: `skip-${e.slug}`, text: `${title(e.slug)} is drifting into the fog. It comes back when you do.`, tone: "fade" });
-      if (e.kind === "session") sessionPeers.add(personName(String(e.payload?.with ?? "a peer")));
+      if (e.kind === "session") sessionPeers.add(personName(String(e.payload?.with ?? "a peer"), peerNames));
     }
-    for (const p of sessionPeers) out.push({ key: `session-${p}`, text: `Learned with ${p}. Both maps updated.`, tone: "up" });
+    for (const p of sessionPeers) out.push({ key: `session-${p}`, text: `Conversation with ${p} saved to your history.`, tone: "up" });
 
     // The map suggesting something new.
     const newSugg = suggestions.filter((s) => !before.suggestions.has(s.slug));
@@ -89,7 +89,7 @@ export function useNarration(suggestions: Suggestion[], paused = false) {
       next = next.slice(-3);
       return next;
     });
-  }, [ready, concepts, nodes, events, edges, missions, suggestions, paused]);
+  }, [ready, concepts, nodes, events, edges, missions, suggestions, paused, peerNames]);
 
   // Expire old captions.
   useEffect(() => {

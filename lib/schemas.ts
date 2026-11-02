@@ -44,6 +44,7 @@ export const TeachRequest = z.object({
   slug,
   learnerSummary: z.string().max(900).default(""),
   depth: z.number().int().min(1).max(5).default(1),
+  regenerate: z.boolean().default(false),
 });
 export const TeachResult = z.object({
   format: z.enum(["predict", "manipulate", "analogy", "story", "source-clip", "short-read"]),

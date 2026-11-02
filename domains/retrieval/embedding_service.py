@@ -10,7 +10,8 @@ import argparse, hashlib, json, os, secrets, threading
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = "FacebookAI/roberta-base"
 REVISION = "e2da8e2f811d1448a5b465c236feacd80ffbac7b"
-SPACE = REVISION + ":mean-mask-l2-v1"
+REFERENCE_HASH = "ec1cadc28166e6bdc48d5248743ddc8c9cea8147f788e82fb02229a1d27588af"
+SPACE = REVISION + ":mean-mask-l2-refmean-l2-v2:" + REFERENCE_HASH
 MODEL_DIR = ROOT / ".local/models/roberta-base"
 TOKEN_FILE = ROOT / ".local/embedding-token"
 
@@ -35,6 +36,13 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, local_files_only=True, trust_remote_code=False)
     model = AutoModel.from_pretrained(MODEL_DIR, local_files_only=True, trust_remote_code=False, use_safetensors=True, add_pooling_layer=False)
     model.eval()
+    reference_bytes = Path(__file__).with_name("reference-mean.json").read_bytes()
+    if hashlib.sha256(reference_bytes).hexdigest() != REFERENCE_HASH:
+        raise ValueError("Embedding reference does not match the pinned space")
+    reference = json.loads(reference_bytes)
+    if reference.get("baseModel") != MODEL or reference.get("baseRevision") != REVISION or len(reference.get("mean", [])) != 768:
+        raise ValueError("Embedding reference model mismatch")
+    reference_mean = torch.tensor(reference["mean"], dtype=torch.float32)
     lock = threading.Lock()
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -53,7 +61,7 @@ def main():
             self.end_headers(); self.wfile.write(data)
         def do_GET(self):
             if self.path != "/health": return self.send_json(404, {"error":"Not found"})
-            return self.send_json(200, {"status":"ready","model":MODEL,"revision":SPACE,"dimensions":768,"mode":"local-meta","retrievalTuned":False})
+            return self.send_json(200, {"status":"ready","model":MODEL,"revision":SPACE,"dimensions":768,"mode":"local-meta","retrievalTuned":False,"postprocessing":"fixed-reference-mean-centering","referenceHash":REFERENCE_HASH})
         def do_POST(self):
             if self.path != "/embed": return self.send_json(404, {"error":"Not found"})
             if self.headers.get("Origin") or not secrets.compare_digest(self.headers.get("Authorization", ""), "Bearer " + token):
@@ -70,7 +78,11 @@ def main():
                     hidden = model(**inputs).last_hidden_state
                     mask = inputs["attention_mask"].unsqueeze(-1)
                     pooled = (hidden * mask).sum(1) / mask.sum(1).clamp(min=1)
-                    vectors = torch.nn.functional.normalize(pooled, p=2, dim=1).tolist()
+                    normalized = torch.nn.functional.normalize(pooled, p=2, dim=1)
+                    centered = normalized - reference_mean
+                    if (torch.linalg.vector_norm(centered, dim=1) < 1e-12).any():
+                        raise ValueError("Embedding has no remaining signal after centering")
+                    vectors = torch.nn.functional.normalize(centered, p=2, dim=1).tolist()
                 return self.send_json(200, {"vectors":vectors,"model":MODEL,"revision":SPACE,"dimensions":768,"mode":"local-meta","contentHashes":[hashlib.sha256(t.encode()).hexdigest() for t in texts],"maxTokens":512})
             except (ValueError,TypeError,json.JSONDecodeError):
                 return self.send_json(400,{"error":"Invalid embedding request"})

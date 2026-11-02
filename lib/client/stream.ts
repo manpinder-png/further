@@ -2,12 +2,20 @@ import type { ProgressEvent } from "../../domains/ui/activity.ts";
 
 function abortError() { return new DOMException("Stopped waiting for this response.", "AbortError"); }
 
+/** Only an explicit server acknowledgement can authorize a fresh mutation key. */
+export class RequestFailure extends Error {
+  constructor(message: string, public retryWithNewKey = false, public code?: string) { super(message); this.name = "RequestFailure"; }
+}
+export function canUseNewRequestKey(error: unknown): boolean {
+  return error instanceof RequestFailure && error.retryWithNewKey;
+}
+
 /** Decode SSE by lines, including split UTF-8, CRLF boundaries, comments and multiline data. */
 export async function consumeEventStream<T>(response: Response, onProgress: (event: ProgressEvent) => void, signal?: AbortSignal): Promise<T> {
   if (signal?.aborted) throw abortError();
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.error === "string" ? body.error : `The request failed (${response.status}). Please retry.`);
+    throw new RequestFailure(typeof body.error === "string" ? body.error : `The request failed (${response.status}). Please retry.`, body.retryWithNewKey === true, typeof body.code === "string" ? body.code : undefined);
   }
   if (!response.headers.get("content-type")?.includes("text/event-stream")) {
     const result = await response.json();
@@ -25,7 +33,7 @@ export async function consumeEventStream<T>(response: Response, onProgress: (eve
     const text = lines.join("\n"); lines = [];
     let event: Record<string, unknown>;
     try { event = JSON.parse(text); } catch { throw new Error("The response stream contained an unreadable update. Please retry."); }
-    if (event.type === "error") throw new Error(typeof event.error === "string" ? event.error : "The request could not finish. Please retry.");
+    if (event.type === "error") throw new RequestFailure(typeof event.error === "string" ? event.error : "The request could not finish. Please retry.", event.retryWithNewKey === true, typeof event.code === "string" ? event.code : undefined);
     if (event.type === "result") {
       if (!("result" in event)) throw new Error("The response ended without a final result. Please retry.");
       final = event.result as T; receivedFinal = true; return;

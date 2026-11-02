@@ -118,6 +118,28 @@ test("explicit fixture mode exercises agent collaboration without network infere
   assert.equal(result.usage.inputTokens, 0);
 });
 
+test("a focused plan reads existing evidence without mandatory metadata or map expansion", async()=>{
+  const plan={...map,concepts:[],nextActions:["Predict what happens when one worker waits for memory."]};
+  const model=new QueueModel([
+    {...turn(null),toolCalls:[{id:"read",name:"get_map",arguments:"{}"}]},
+    turn(plan),
+  ]);
+  const result=await createAgentRuntime({model,tools:ports}).invoke("knowledge-map",{text:"What should I try next?",objective:"plan"},actor);
+  assert.deepEqual(result.data.concepts,[]);assert.equal(result.data.nextActions.length,1);
+  assert.equal(result.usage.modelCalls,2);assert.equal(result.artifacts.length,0);
+  assert.equal(result.trace.some(event=>event.name==="infer_metadata"),false);
+});
+
+test("planning cannot silently expand the map and must converge on one next action", async()=>{
+  for(const bad of [map,{...map,concepts:[],nextActions:["One","Two"]}]){
+    const model=new QueueModel([
+      {...turn(null),toolCalls:[{id:"read",name:"get_map",arguments:"{}"}]},
+      turn(bad),turn(bad),
+    ]);
+    await assert.rejects(createAgentRuntime({model,tools:ports}).invoke("knowledge-map",{text:"Plan my next step",objective:"plan"},actor),(error:unknown)=>error instanceof AgentError&&error.code==="INVALID_OUTPUT");
+  }
+});
+
 test("resource guide derives its links from provider citations, not invented URLs", async () => {
   const model = new QueueModel([{ ...turn({ answer: "An official reference", sources: [{ url: "https://invented.invalid/", title: "Invented" }], grounded: true }), citations: [{ url: "https://dev.meta.ai/docs/models", title: "Models" }], searchPerformed: true }]);
   const result = await createAgentRuntime({ model, tools: ports }).invoke("resource-guide", { query: "Meta models" }, actor);

@@ -10,6 +10,8 @@ import { learnerModel } from "../learn";
 import { getDataMode, liveFetch } from "./live";
 import { encodeWav, resample } from "./audio";
 import { useAIStream } from "./useAIStream";
+import { mutationKey } from "@/domains/ui/contracts";
+import { canUseNewRequestKey } from "./stream";
 
 let missionId = Date.now(); // unique across reloads (missions are persisted)
 
@@ -20,15 +22,17 @@ export function useExpand() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { activity, run: stream, cancel } = useAIStream();
-  const previous = useRef<{ text: string; source: Mission["source"] } | null>(null);
-  const run = useCallback(async (text: string, source: Mission["source"]) => {
-    previous.current = { text, source };
-    const id = missionId++;
-    dispatch({ t: "mission", m: { id, text, source, at: Date.now(), status: "running", added: 0, reused: 0 } });
+  const previous = useRef<{ text: string; source: Mission["source"]; key: string; id: number; retryWithNewKey: boolean } | null>(null);
+  const run = useCallback(async (text: string, source: Mission["source"], key = mutationKey(), retriedMissionId?: number) => {
+    const retryId = retriedMissionId ?? (previous.current?.key === key ? previous.current.id : undefined);
+    const id = retryId ?? missionId++;
+    previous.current = { text, source, key, id, retryWithNewKey: false };
+    if (retryId !== undefined) dispatch({ t: "missionPatch", id, patch: { status: "running", error: undefined } });
+    else dispatch({ t: "mission", m: { id, text, source, at: Date.now(), status: "running", added: 0, reused: 0 } });
     setBusy(true); setError(null);
     try {
-      const result = await stream<{ lines: ExpansionLine[]; persisted: boolean; mode: string }>("/api/expand", {
-        method: "POST", body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary }),
+      const result = await stream<{ runId?: string; lines: ExpansionLine[]; persisted: boolean; mode: string }>("/api/expand", {
+        method: "POST", headers: { "idempotency-key": key }, body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary }),
       });
       let added = 0, reused = 0;
       const slugs: string[] = [];
@@ -52,18 +56,27 @@ export function useExpand() {
           if (!live.current.nodes[slug]) await track(slug, "seed");
         }
       }
+      dispatch({ t: "missionPatch", id, patch: { runId: result.runId, status: "done", added, reused, slugs } });
       if (getDataMode() === "local") await refreshSnapshot();
-      dispatch({ t: "missionPatch", id, patch: { status: "done", added, reused, slugs } });
       say("EXPAND", `Validated map result: ${added} added, ${reused} reused`, "ok", result.mode === "fixture" || result.mode === "demo");
       return true;
     } catch (e) {
+      if (previous.current?.key === key) previous.current.retryWithNewKey = canUseNewRequestKey(e);
       const message = e instanceof Error && e.name === "AbortError" ? "Stopped waiting. Your saved map is unchanged unless the server already completed the request." : e instanceof Error ? e.message : "The map could not finish growing.";
       setError(message); say("EXPAND", message, "err");
       dispatch({ t: "missionPatch", id, patch: { status: "error", error: message } });
       return false;
     } finally { setBusy(false); }
   }, [dispatch, say, track, events, refreshSnapshot, stream]);
-  const retry = useCallback(() => { if (previous.current) void run(previous.current.text, previous.current.source); }, [run]);
+  const retry = useCallback(async () => {
+    const attempt = previous.current;
+    if (!attempt) return false;
+    const restored = await run(attempt.text, attempt.source, attempt.retryWithNewKey ? mutationKey() : attempt.key, attempt.id);
+    // An unknown disconnect first checks the old key. If the server confirms
+    // failure before saving, this Retry click may safely make one new attempt.
+    if (!restored && !attempt.retryWithNewKey && previous.current?.id === attempt.id && previous.current.retryWithNewKey) return run(attempt.text, attempt.source, mutationKey(), attempt.id);
+    return restored;
+  }, [run]);
   return { run, busy, error, activity, cancel, retry };
 }
 
@@ -188,7 +201,7 @@ export function useInbox(onItem: (text: string, source: string) => void) {
 export function useMatchJob() {
   const { nodes, edges, profile, dispatch, say, match, sessions } = useStore();
   return useCallback(
-    async (opts: { quietIfNone?: boolean } = {}) => {
+    async (opts: { quietIfNone?: boolean; conceptSlugs?: string[] } = {}) => {
       if (match) return null;
       if (!profile.openToMatch) { say("MATCH", "You're not open to match. Skipping.", "warn"); return null; }
       const now = Date.now();
@@ -200,7 +213,7 @@ export function useMatchJob() {
         language: profile.language,
       };
       say("MATCH", `scoring pairs · me=[${me.activeConcepts.join(", ")}]`);
-      const r = await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ me, edges }) });
+      const r = await liveFetch("/api/match", { method: "POST", body: JSON.stringify({ me, edges, ...(opts.conceptSlugs === undefined ? {} : { conceptSlugs: opts.conceptSlugs }) }) });
       const d = await r.json();
       if (!r.ok) {
         say("MATCH", d.error ?? "Match service unavailable", "err");

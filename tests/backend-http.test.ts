@@ -113,6 +113,23 @@ test("HTTP local journey: independent identities, durable maps and genuine share
     assert.equal((await alice.request("/api/data/events","POST",{slug:shared,kind:"explain",payload:{score:3}})).status,400);
   });
 
+  await step("saved concepts become searchable through the real asynchronous local index",async()=>{
+    // Source persistence completes before embedding inference. Explicitly resume
+    // durable work and wait for it instead of assuming an immediately ready map.
+    for(const client of [alice,bob])await client.ok("/api/local/reindex","POST",{});
+    const deadline=Date.now()+90_000;
+    for(const client of [alice,bob]) {
+      for(;;) {
+        const {indexing}=await client.ok<{indexing:{pending:number;processing:number;retry:number;ready:number}}>("/api/local/indexing");
+        if(indexing.pending+indexing.processing+indexing.retry===0){assert.ok(indexing.ready>0);break;}
+        assert.ok(Date.now()<deadline,"Start the real local embedding service before backend HTTP tests");
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+    }
+    // Indexing can outlast a presence lease; matching starts from fresh presence.
+    for(const client of [alice,bob])await client.ok("/api/local/presence","POST");
+  });
+
   await step("presence only exposes the matching projection, with opt-in and time fit",async()=>{
     await alice.ok("/api/local/presence","POST");await bob.ok("/api/local/presence","POST");
     const p=await alice.ok<{explorers:PeerCandidate[]}>("/api/local/presence");

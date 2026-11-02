@@ -14,6 +14,6 @@ export async function POST(req:Request){return handle(req,async()=>{
   const d=result.data;
   // The validated graph is saved before acknowledging any node in the stream.
   const lines:ExpansionLine[]=[{type:"intent",intent:d.intent,root:d.root,rootTitle:d.rootTitle},...d.concepts.map(c=>({type:"node" as const,...c,edge:c.edge??{from:d.root,kind:"related" as const},difficulty:Math.max(1,Math.round(c.difficulty*4+1)),canonical:null})),{type:"done",count:d.concepts.length,ms:Date.now()-start}];
-  return {lines,persisted:result.persisted,mode:result.mode==="fixture"?"demo":"live",...(result.indexWarning?{indexWarning:result.indexWarning}:{})};
+  return {runId:result.runId,lines,persisted:result.persisted,mode:result.mode==="fixture"?"demo":"live",...(result.indexWarning?{indexWarning:result.indexWarning}:{})};
   },{jsonResponse:result=>new Response(result.lines.map(l=>`data: ${JSON.stringify(l)}\n\n`).join(""),{headers:{"content-type":"text/event-stream","cache-control":"no-store","x-further-persisted":String(result.persisted),"x-further-mode":result.mode,...(result.indexWarning?{"x-further-index":"pending"}:{})}})});
 });}

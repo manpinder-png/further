@@ -3,7 +3,7 @@
 // (outer, in the fog). Suggested topics sit just beyond the topic they grow from.
 // Angle comes from the concept tree, so a topic and its children stay in the same direction.
 // Fading topics (low interest) drift outward. Deterministic: same input, same picture.
-import type { Edge, NodeState } from "./types";
+import type { Edge, EdgeKind, NodeState } from "./types";
 
 export type LState = NodeState | "suggested";
 export interface LNode {
@@ -38,6 +38,90 @@ export const SY = 0.86;
 const RANK: Record<NodeState, number> = { understood: 0, explored: 1, seeded: 2 };
 const RING_LABEL = ["Understood", "Exploring", "On your map"];
 const PAD = 12;
+
+/** Summary topics are containers, not synthetic learner concepts or scored nodes. */
+export interface SummaryLayoutNode { id: string; title: string; conceptCount: number }
+export interface SummaryLink { src: string; dst: string; count: number; kinds: EdgeKind[] }
+
+export function aggregateTopicEdges(groups: readonly { id: string; conceptSlugs: readonly string[] }[], edges: readonly Edge[]): SummaryLink[] {
+  const membership = new Map<string, string>();
+  for (const group of groups) for (const slug of group.conceptSlugs) if (!membership.has(slug)) membership.set(slug, group.id);
+  const links = new Map<string, SummaryLink>();
+  const seen = new Set<string>();
+  for (const edge of edges) {
+    const src = membership.get(edge.src), dst = membership.get(edge.dst);
+    if (!src || !dst || src === dst) continue;
+    const evidenceKey = JSON.stringify([edge.src, edge.dst, edge.kind]);
+    if (seen.has(evidenceKey)) continue;
+    seen.add(evidenceKey);
+    // Summary links convey connection, not a made-up direction between whole subjects.
+    const [a, b] = [src, dst].sort();
+    const key = JSON.stringify([a, b]);
+    const link = links.get(key) ?? { src: a, dst: b, count: 0, kinds: [] };
+    link.count++;
+    if (!link.kinds.includes(edge.kind)) link.kinds.push(edge.kind);
+    links.set(key, link);
+  }
+  return [...links.values()].sort((a, b) => a.src.localeCompare(b.src) || a.dst.localeCompare(b.dst)).map(link => ({ ...link, kinds: [...link.kinds].sort() }));
+}
+
+export function layoutSummary(list: SummaryLayoutNode[], options: { compact?: boolean } = {}): { pos: Record<string, Placed>; rings: Ring[] } {
+  const unique = [...new Map(list.map(node => [node.id, node])).values()];
+  if (options.compact) {
+    const columns = unique.length > 4 ? 2 : 1;
+    const rows = Math.ceil(unique.length / columns);
+    const beforeHub = Math.floor(rows / 2);
+    const pos: Record<string, Placed> = {};
+    unique.forEach((node, index) => {
+      const row = Math.floor(index / columns);
+      const width = columns === 2 ? 168 : Math.max(220, Math.min(280, node.title.length * 8 + 62));
+      const alone = columns === 1 || (index === unique.length - 1 && unique.length % columns === 1);
+      // Keep the personal hub between topics. This remains a camera-driven map,
+      // with narrower world bounds rather than shrinking a wide desktop ring.
+      pos[node.id] = { x: alone ? 0 : index % columns === 0 ? -94 : 94, y: row < beforeHub ? -114 - (beforeHub - row - 1) * 100 : 114 + (row - beforeHub) * 100, w: width, h: 88 };
+    });
+    return { pos, rings: [] };
+  }
+  const dimensions = unique.map(node => ({ ...node, w: Math.max(180, Math.min(280, node.title.length * 8 + 62)), h: 88 }));
+  const radius = Math.max(165, dimensions.reduce((sum, node) => sum + node.w / 2 + node.h / 2 + PAD, 0) / (2 * Math.PI * ((SX + SY) / 2)));
+  const pos: Record<string, Placed> = {};
+  dimensions.forEach((node, index) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * (index + .5)) / Math.max(1, dimensions.length);
+    pos[node.id] = { x: Math.cos(angle) * radius * SX, y: Math.sin(angle) * radius * SY, w: node.w, h: node.h };
+  });
+  separateCards(pos, dimensions.map(node => node.id));
+  return { pos, rings: unique.length ? [{ r: radius, label: "Topics" }] : [] };
+}
+
+function separateCards(pos: Record<string, Placed>, ids: string[]) {
+  const you: Placed = { x: 0, y: 0, ...YOU };
+  const sep = (a: Placed, b: Placed, fixedB: boolean, salt: number) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const ox = (a.w + b.w) / 2 + PAD - Math.abs(dx);
+    const oy = (a.h + b.h) / 2 + PAD - Math.abs(dy);
+    if (ox <= 0 || oy <= 0) return false;
+    const share = fixedB ? 1 : 0.5;
+    if (ox < oy * 1.4) {
+      const sx = dx === 0 ? (salt % 2 ? 1 : -1) : Math.sign(dx);
+      a.x -= sx * ox * share;
+      if (!fixedB) b.x += sx * ox * share;
+    } else {
+      const sy = dy === 0 ? (salt % 2 ? 1 : -1) : Math.sign(dy);
+      a.y -= sy * oy * share;
+      if (!fixedB) b.y += sy * oy * share;
+    }
+    return true;
+  };
+  for (let iteration = 0; iteration < 120; iteration++) {
+    let moved = false;
+    for (let i = 0; i < ids.length; i++) {
+      const a = pos[ids[i]];
+      if (sep(a, you, true, i)) moved = true;
+      for (let j = i + 1; j < ids.length; j++) if (sep(a, pos[ids[j]], false, i + j)) moved = true;
+    }
+    if (!moved) break;
+  }
+}
 
 export function layoutRadial(list: LNode[], edges: Edge[]): { pos: Record<string, Placed>; rings: Ring[] } {
   const by = new Map(list.map((n) => [n.slug, n]));
@@ -119,34 +203,7 @@ export function layoutRadial(list: LNode[], edges: Edge[]): { pos: Record<string
   });
 
   // 5. Push overlapping cards apart (and away from You).
-  const ids = order;
-  const you: Placed = { x: 0, y: 0, ...YOU };
-  const sep = (a: Placed, b: Placed, fixedB: boolean, salt: number) => {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const ox = (a.w + b.w) / 2 + PAD - Math.abs(dx);
-    const oy = (a.h + b.h) / 2 + PAD - Math.abs(dy);
-    if (ox <= 0 || oy <= 0) return false;
-    const share = fixedB ? 1 : 0.5;
-    if (ox < oy * 1.4) {
-      const sx = dx === 0 ? (salt % 2 ? 1 : -1) : Math.sign(dx);
-      a.x -= sx * ox * share;
-      if (!fixedB) b.x += sx * ox * share;
-    } else {
-      const sy = dy === 0 ? (salt % 2 ? 1 : -1) : Math.sign(dy);
-      a.y -= sy * oy * share;
-      if (!fixedB) b.y += sy * oy * share;
-    }
-    return true;
-  };
-  for (let it = 0; it < 120; it++) {
-    let moved = false;
-    for (let i = 0; i < ids.length; i++) {
-      const a = pos[ids[i]];
-      if (sep(a, you, true, i)) moved = true;
-      for (let j = i + 1; j < ids.length; j++) if (sep(a, pos[ids[j]], false, i + j)) moved = true;
-    }
-    if (!moved) break;
-  }
+  separateCards(pos, order);
   return { pos, rings };
 }
 

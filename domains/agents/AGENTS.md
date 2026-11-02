@@ -9,4 +9,4 @@
 - Consult current official provider documentation before modifying SDK, tool, multimodal or reasoning behavior. Preserve Meta Responses encrypted reasoning items intact within a run and use `store: false`.
 - Explicit fixture mode is a rehearsal, not a fallback. Provider failures remain visible failures.
 - Do not claim A2A compliance: the current transport-independent invocation contract has an HTTP adapter; A2A/MCP can be future adapters.
-- No commits or pushes are authorized for the current local build.
+- The v2 snapshot may be committed/pushed only to the explicitly authorized feature/v2 delivery and feature/mani-v2 team branches. Follow root AGENTS.md for subsequent publication boundaries.

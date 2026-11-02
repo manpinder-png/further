@@ -1,135 +1,95 @@
 "use client";
-// F1: voice-first curiosity capture. Text is the fallback, never a second-class path.
 import { useEffect, useRef, useState } from "react";
 import { transcribeBlob, useExpand, useRecorder } from "@/lib/client/hooks";
-import { usePath, useStore } from "@/lib/client/store";
+import { useStore } from "@/lib/client/store";
 import { useAIStream } from "@/lib/client/useAIStream";
 import ActivityPanel, { OperationStatus } from "@/components/activity/ActivityPanel";
 import AgentAssistant from "@/components/mission/AgentAssistant";
+import IndexingStatus from "@/components/activity/IndexingStatus";
 
-const EXAMPLES = ["why does training AI need special chips?", "how do chatbots remember things?", "what makes a model smaller?"];
+const EXAMPLES = ["Why does AI need special chips?", "How do chatbots remember things?", "What makes a model smaller?"];
 
-export default function CommandBar() {
+/** The original map dock, with reviewed voice input and real agent progress. */
+export default function CommandBar({ variant = "dock", onComplete, question, onOpenTopic }: { variant?: "dock" | "hero" | "compact"; onComplete?: () => void; question?: string; onOpenTopic?: (slug: string) => void }) {
   const { say, dispatch } = useStore();
-  // Return hook (Connor): pick up where you left off. Same source as "Your path".
-  const next = usePath()[0];
   const { run, busy, error: expandError, activity, cancel, retry } = useExpand();
   const voice = useAIStream();
   const lastAudio = useRef<Blob | null>(null);
-  const rec = useRecorder(15_000);
+  const rec = useRecorder(20_000);
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [lens, setLens] = useState(false);
   const [assistant, setAssistant] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-
+  const [voiceReview, setVoiceReview] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const recording = rec.state === "recording";
+  const dock = variant === "dock";
   useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") { e.preventDefault(); input.current?.focus(); }
+    if (!dock) input.current?.focus();
+    const focusQuestion = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !target?.closest("input, textarea, [contenteditable=true], [role=dialog]")) {
+        event.preventDefault(); input.current?.focus();
+      }
     };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, []);
-
-  const submit = async (t: string) => {
-    const v = t.trim();
-    if (busy) return;
-    if (v.length < 2) return setErr("Say a bit more. Even a vague question works.");
-    setErr(null);
-    setText(v);
-    if (await run(v, "text")) setText("");
+    window.addEventListener("keydown", focusQuestion);
+    return () => window.removeEventListener("keydown", focusQuestion);
+  }, [dock]);
+  const complete = () => { setText(""); setVoiceReview(false); onComplete?.(); };
+  const submit = async (valueToSend: string, source: "text" | "voice" | "lens" = voiceReview ? "voice" : "text") => {
+    const value = valueToSend.trim();
+    if (busy || recording || rec.state === "processing") return;
+    if (value.length < 2) return setErr("Say a bit more. Even a vague question works.");
+    setErr(null); setText(value);
+    if (await run(value, source)) complete();
   };
-
+  const retryQuestion = () => { void retry().then((saved) => { if (saved) complete(); }); };
   const processVoice = async (blob: Blob) => {
     lastAudio.current = blob; rec.setState("processing"); setErr(null);
     try {
-      say("TRANSCRIBE", `clip ${(blob.size / 1024).toFixed(0)}KB ${blob.type} → Muse Voice Transcribe`);
-      const t = await transcribeBlob(blob, "curiosity", (path, init) => voice.run(path, init));
-      say("TRANSCRIBE", `${t.ms}ms (target < 3000ms): "${t.text}"`, "ok", t.demo);
-      if (!t.text.trim()) throw new Error("Didn't catch that. Try again or type it.");
-      setText(t.text);
-      if (await run(t.text, "voice")) setText("");
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      rec.setState("idle");
-    }
+      const transcript = await transcribeBlob(blob, "curiosity", (path, init) => voice.run(path, init));
+      if (!transcript.text.trim()) throw new Error("Didn't catch that. Try again or type your question.");
+      setText(transcript.text); setVoiceReview(true);
+      say("TRANSCRIBE", "Voice question transcribed. Review or edit it before exploring.", "ok", transcript.demo);
+    } catch (error) { setErr(error instanceof Error ? error.message : "We couldn't transcribe the recording."); }
+    finally { rec.setState("idle"); }
   };
   const mic = async () => {
     setErr(null);
-    if (rec.state === "recording") return rec.stop();
+    if (recording) return rec.stop();
     const blob = await rec.start();
-    if (!blob) return setErr("Mic blocked. Type your question instead.");
+    if (!blob) return setErr("Microphone access is unavailable. You can type your question instead.");
     await processVoice(blob);
   };
-
-  const recording = rec.state === "recording";
-  return (
-    <>
-      <div className="border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5">
-        <div className="mx-auto mb-2 max-h-[42dvh] max-w-4xl space-y-2 overflow-y-auto">
-          <ActivityPanel activity={voice.activity} title="Voice transcription" onCancel={voice.cancel} onRetry={() => { if (lastAudio.current) void processVoice(lastAudio.current); }} compact />
-          <ActivityPanel activity={activity} title="Growing your knowledge map" onCancel={cancel} onRetry={retry} compact />
-          {busy && activity.status === "completed" && <OperationStatus label="Refreshing your saved map" detail="The validated result arrived. Loading its saved concepts and connections." />}
-        </div>
-        <div className="mx-auto flex max-w-4xl items-center gap-2">
-          <button
-            onClick={mic}
-            disabled={rec.state === "processing" || busy}
-            aria-label={recording ? "Stop recording" : "Ask by voice"}
-            title={recording ? "Stop recording" : "Ask by voice"}
-            className={`relative flex h-12 w-12 shrink-0 items-center justify-center border transition-colors ${recording ? "border-accent bg-accent text-bg" : "border-accent bg-accent text-bg hover:bg-accent-hover"}`}
-          >
-            {recording && <span className="absolute inset-0 animate-ping border border-accent" />}
-            {rec.state === "processing" ? <span className="cursor-blink text-xs">…</span> : recording ? <span className="h-3.5 w-3.5 bg-bg" /> : <MicIcon />}
-          </button>
-          <form className="relative flex h-12 min-w-0 flex-1 items-center border border-line-2 bg-bg focus-within:border-dim" onSubmit={(e) => { e.preventDefault(); submit(text); }}>
-            <span className="pl-3 text-dim" aria-hidden>›</span>
-            {recording ? (
-              <div className="flex h-full flex-1 items-center gap-[3px] px-3" aria-live="polite">
-                <span className="mr-2 text-xs text-text">Listening {(rec.elapsed / 1000).toFixed(1)}s</span>
-                {rec.level.map((l, i) => <span key={i} className="w-[3px] bg-text/70 transition-[height]" style={{ height: `${Math.max(6, l * 80)}%` }} />)}
-              </div>
-            ) : (
-              <input
-                ref={input}
-                value={text}
-                disabled={busy}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={busy ? "Growing your map…" : "What are you curious about?  (press / )"}
-                maxLength={500}
-                className="h-full min-w-0 flex-1 bg-transparent px-2 text-md outline-none placeholder:text-dim"
-                aria-label="What are you curious about?"
-              />
-            )}
-            {busy && <span className="mr-3 shrink-0 text-xs text-muted" aria-live="polite">Adding…</span>}
-            {!recording && <button className="mr-1.5 hidden h-9 px-3 text-xs text-muted hover:text-text sm:block" disabled={busy} aria-label="Send">Enter ↵</button>}
-          </form>
-          <button className="btn h-12 shrink-0 px-3" onClick={() => setLens(true)} title="Ask about a photo" aria-label="Ask about a photo" disabled={busy}>
-            <LensIcon /><span className="hidden sm:inline" aria-hidden>Photo</span>
-          </button>
-          <button className="btn h-12 shrink-0 px-3" onClick={() => setAssistant(true)} title="Open your learning guide" aria-label="Open your learning guide"><span aria-hidden>✧</span><span className="hidden sm:inline">Guide</span></button>
-        </div>
-        <div className="mx-auto mt-2 flex max-w-4xl items-center gap-2 overflow-x-auto text-xs">
-          {err || expandError ? <span className="text-err" role="alert">{err ?? expandError}</span> : (
-            <>
-              {next && (
-                <button onClick={() => dispatch({ t: "select", slug: next.slug })} className="touch-target shrink-0 rounded-full border border-[#1b4a4d] px-2.5 py-1 text-mastery hover:bg-mastery-soft" title={next.reason}>
-                  Continue: {next.title}
-                </button>
-              )}
-              <span className="shrink-0 text-dim">Try</span>
-              {EXAMPLES.map((e) => (
-                <button key={e} onClick={() => submit(e)} disabled={busy} className="touch-target shrink-0 border border-line px-2 py-1 text-muted hover:border-dim hover:text-text">{e}</button>
-              ))}
-            </>
-          )}
-        </div>
+  const progress = <>
+    <IndexingStatus />
+    <ActivityPanel activity={voice.activity} title="Voice transcription" onCancel={voice.cancel} onRetry={() => { if (lastAudio.current) void processVoice(lastAudio.current); }} compact={dock} />
+    <ActivityPanel activity={activity} title="Growing your knowledge map" onCancel={cancel} onRetry={retryQuestion} compact={dock} />
+    {busy && activity.status === "completed" && <OperationStatus label="Refreshing your saved map" detail="The response is ready. Loading its saved concepts and connections." />}
+  </>;
+  const questionInput = recording ? <div className={`flex min-w-0 flex-1 items-center gap-[3px] px-3 ${dock ? "h-12" : "min-h-24"}`} role="status"><span className="mr-2 shrink-0 text-xs text-accent">Listening {(rec.elapsed / 1000).toFixed(1)}s</span>{rec.level.map((level, i) => <span key={i} className="w-[3px] bg-accent/70" style={{ height: Math.max(5, level * 40) }} />)}</div> : <textarea id="curiosity-question" ref={input} value={text} onChange={(event) => setText(event.target.value)} maxLength={500} disabled={busy || rec.state === "processing"} placeholder={busy ? "Growing your map…" : dock ? "What are you curious about?  ( / )" : "I'm curious about…"} rows={dock ? voiceReview ? 2 : 1 : 3} className={`min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-dim ${dock ? "max-h-28 px-2 py-3 text-sm leading-6" : "w-full text-lg leading-relaxed"}`} aria-label="What are you curious about?" onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && (dock ? !event.shiftKey : event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit(text); } }} />;
+  return <>
+    {dock ? <div className="shrink-0 border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5">
+      <div className="mx-auto mb-2 max-h-[42dvh] max-w-4xl space-y-2 overflow-y-auto">{progress}</div>
+      {voiceReview && <p className="mx-auto mb-2 max-w-4xl text-xs text-muted">Review your transcript, then choose Explore.</p>}
+      <div className="mx-auto flex max-w-4xl items-center gap-2">
+        <button type="button" onClick={() => void mic()} disabled={busy || rec.state === "processing"} className={`relative flex h-12 w-12 shrink-0 items-center justify-center border border-accent bg-accent text-bg hover:bg-accent-hover ${recording ? "animate-pulse" : ""}`} aria-label={recording ? "Stop recording" : "Ask by voice"} title={recording ? "Stop recording" : "Ask by voice"}>{rec.state === "processing" ? <span className="cursor-blink text-xs">…</span> : recording ? <span className="h-3.5 w-3.5 bg-bg" /> : <MicIcon />}</button>
+        <form className="flex min-h-12 min-w-0 flex-1 items-center border border-line-2 bg-bg focus-within:border-dim" onSubmit={(event) => { event.preventDefault(); void submit(text); }}><span className="hidden pl-3 text-dim sm:block" aria-hidden>›</span>{questionInput}{!recording && <button className="mr-1 shrink-0 px-2 py-2 text-xs text-muted hover:text-text disabled:text-dim" disabled={busy || rec.state === "processing" || text.trim().length < 2} aria-label="Explore question"><span className="hidden sm:inline">{busy ? "Adding…" : "Explore"}</span><span className="sm:hidden" aria-hidden>↵</span></button>}</form>
+        <button type="button" className="btn h-12 shrink-0 px-2 sm:px-3" onClick={() => setLens(true)} aria-label="Ask about a photo" title="Ask about a photo" disabled={busy || recording}><LensIcon /><span className="hidden sm:inline">Photo</span></button>
+        <button type="button" className="btn h-12 shrink-0 px-2 sm:px-3" onClick={() => setAssistant(true)} aria-label="Open your learning guide" title="Open your learning guide"><span aria-hidden>✧</span><span className="hidden sm:inline">Guide</span></button>
       </div>
-      {lens && <LensModal onClose={() => setLens(false)} onExplore={(question) => { setLens(false); setText(question); void run(question, "lens").then((saved) => { if (saved) setText(""); }); }} />}
-      {assistant && <AgentAssistant onClose={() => setAssistant(false)} />}
-    </>
-  );
+      <div className="mx-auto mt-2 flex max-w-4xl items-center gap-2 overflow-x-auto text-xs">{err || expandError ? <span className="text-err" role="alert">{err ?? expandError}</span> : <><span className="shrink-0 text-dim">Try</span>{EXAMPLES.map((example) => <button key={example} type="button" onClick={() => { setText(example); setVoiceReview(false); input.current?.focus(); }} disabled={busy} className="touch-target shrink-0 border border-line px-2 py-1 text-muted hover:border-dim hover:text-text">{example}</button>)}</>}</div>
+    </div> : <>
+      <form className={`rounded-2xl border border-line-2 bg-panel focus-within:border-accent/60 ${variant === "compact" ? "p-3" : "p-4 sm:p-5"}`} onSubmit={(event) => { event.preventDefault(); void submit(text); }}>
+        {questionInput}
+        {voiceReview && <p className="mt-2 text-xs text-muted">Review your transcript before exploring.</p>}
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3"><div className="flex items-center gap-1"><button type="button" onClick={() => void mic()} disabled={busy || rec.state === "processing"} className="btn btn-ghost text-muted" aria-label={recording ? "Stop recording" : "Ask by voice"}>{recording ? <span aria-hidden>■</span> : <MicIcon />}</button><button type="button" className="btn btn-ghost text-muted" onClick={() => setLens(true)} aria-label="Ask about a photo" disabled={busy || recording}><LensIcon /></button></div><button className="btn btn-primary rounded-lg" disabled={busy || rec.state !== "idle" || text.trim().length < 2}>{busy ? "Growing your map…" : "Explore question"} →</button></div>
+      </form>
+      {(err || expandError) && <p className="mt-3 text-sm text-err" role="alert">{err ?? expandError}</p>}<div className="mt-4 space-y-3">{progress}</div>
+    </>}
+    {lens && <LensModal onClose={() => setLens(false)} onExplore={(nextQuestion) => { setLens(false); setText(nextQuestion); void submit(nextQuestion, "lens"); }} />}
+    {assistant && <AgentAssistant question={question} onClose={() => setAssistant(false)} onOpenTopic={(slug) => { setAssistant(false); if (onOpenTopic) onOpenTopic(slug); else dispatch({ t: "select", slug }); }} />}
+  </>;
 }
 
 /** A photo is understood first; the learner confirms the question before map expansion. */

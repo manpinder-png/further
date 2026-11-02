@@ -1,0 +1,27 @@
+{
+ "description":"Independent synthetic holdout written after fixing the neutral reference mean; no training or threshold fitting. Includes related distractor pairs.",
+ "passages":[
+  {"id":"dns","text":"Domain name resolution. A distributed directory maps human-readable website names to numeric internet addresses through cached authoritative records."},
+  {"id":"http","text":"HTTP communication. A web client sends a method and path to a server, which returns a status code, headers and optionally a response body."},
+  {"id":"classification","text":"Logistic regression classification. A linear combination of input features is transformed into a probability to choose between discrete categories."},
+  {"id":"regression","text":"Linear regression prediction. A fitted weighted sum estimates a continuous numerical outcome and minimizes squared prediction errors."},
+  {"id":"rhythm","text":"Musical rhythm. Repeated beats and durations organize when notes begin, with tempo controlling how quickly the pulse repeats."},
+  {"id":"harmony","text":"Musical harmony. Several notes sounding together form chords, and movement between chords creates tension and resolution."},
+  {"id":"photosynthesis","text":"Plant photosynthesis. Leaves capture sunlight to turn water and carbon dioxide into sugars while releasing oxygen."},
+  {"id":"water-cycle","text":"The water cycle. Liquid evaporates into the atmosphere, condenses into clouds and returns to the surface as precipitation."},
+  {"id":"git-merge","text":"Version-control merging. Independent changes from two development branches are combined, with conflicting edits resolved before recording the result."},
+  {"id":"plates","text":"Plate tectonics. Large pieces of the Earth's crust move slowly, colliding, separating or sliding to form mountains and ocean trenches."}
+ ],
+ "queries":[
+  {"text":"How does a typed website name become an IP address?","expected":"dns"},
+  {"text":"Why does a browser get a response number and content after making a request?","expected":"http"},
+  {"text":"How can a weighted feature model decide whether an item belongs to one of two classes?","expected":"classification"},
+  {"text":"What simple model can estimate a numerical price from several measurements?","expected":"regression"},
+  {"text":"How does the repeated pulse control the timing of a song?","expected":"rhythm"},
+  {"text":"Why do simultaneous notes and chord changes sound tense or resolved?","expected":"harmony"},
+  {"text":"How do green leaves use light to make their own food?","expected":"photosynthesis"},
+  {"text":"What brings ocean moisture up into clouds and back down as rain?","expected":"water-cycle"},
+  {"text":"How can two developers combine separate edits without losing each other's work?","expected":"git-merge"},
+  {"text":"Why do moving sections of the planet's surface create mountains?","expected":"plates"}
+ ]
+}

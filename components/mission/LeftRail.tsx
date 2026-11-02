@@ -3,12 +3,12 @@
 // connections and sessions. Collapses to a narrow icon strip on tablet and desktop;
 // on phones it opens as a drawer from the header.
 import { useEffect, useMemo, useState } from "react";
-import { useMapStats, usePath, useStore } from "@/lib/client/store";
-import { CloseIcon, Head, LevelRing, NodeIcon, useNow } from "@/components/ui/bits";
+import Link from "next/link";
+import { usePath, useStore } from "@/lib/client/store";
+import { CloseIcon, Head, NodeIcon, useNow } from "@/components/ui/bits";
 import { CATALOG } from "@/lib/demo/seed";
 import { personName, plural, relTime } from "@/lib/client/format";
-import { replay } from "@/lib/math";
-import { learnerModel } from "@/lib/learn";
+import { explanationFor, learningPaths, orderPath } from "@/lib/client/learning-paths";
 import { useMatchJob } from "@/lib/client/hooks";
 import { BUILDER_VIEW } from "@/lib/builder";
 import AgentLog from "@/components/builder/AgentLog";
@@ -18,24 +18,35 @@ type SectionId = "progress" | "path" | "quests" | "activity" | "people" | "sessi
 const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "progress", label: "Progress" },
   { id: "path", label: "Your path" },
-  { id: "quests", label: "Quests" },
+  { id: "quests", label: "Questions" },
   { id: "activity", label: "Activity" },
   { id: "people", label: "Connections" },
   { id: "sessions", label: "Sessions" },
 ];
-const OPEN_KEY = "further:pane:open";
-const DEFAULT_OPEN: SectionId[] = ["progress", "path", "quests", "activity"];
+const OPEN_KEY = "further:pane:open:v2";
+const DEFAULT_OPEN: SectionId[] = ["path", "quests"];
 const MAX_ACTIVITY = 5;
 
-export default function LeftRail({ collapsed = false, onCollapse, drawer = false }: { collapsed?: boolean; onCollapse?: (v: boolean) => void; drawer?: boolean }) {
-  const { dispatch } = useStore();
-  const stats = useMapStats();
-  const path = usePath();
+interface LeftRailProps {
+  collapsed?: boolean;
+  onCollapse?: (v: boolean) => void;
+  drawer?: boolean;
+  activeQuestionKey?: string;
+  onChooseQuestion?: (key: string) => void;
+  onSelectTopic?: (slug: string) => void;
+  activeSlugs?: string[];
+}
+
+export default function LeftRail({ collapsed = false, onCollapse, drawer = false, activeQuestionKey, onChooseQuestion, onSelectTopic, activeSlugs }: LeftRailProps) {
+  const { dispatch, missions, concepts, nodes } = useStore();
+  const conceptCount = Object.keys(nodes).filter(slug => concepts[slug]).length;
+  const path = useRailPath(activeSlugs);
+  const questionCount = learningPaths(missions, concepts).length;
   const [open, setOpen] = useState<Set<SectionId>>(new Set(DEFAULT_OPEN));
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "null");
-      if (Array.isArray(saved)) setOpen(new Set(saved));
+      if (Array.isArray(saved)) setOpen(new Set(saved.filter((id): id is SectionId => SECTIONS.some(section => section.id === id))));
     } catch { /* keep defaults */ }
   }, []);
   const toggle = (id: SectionId, force?: boolean) =>
@@ -53,8 +64,8 @@ export default function LeftRail({ collapsed = false, onCollapse, drawer = false
         <button className="btn btn-ghost btn-icon border-transparent text-muted hover:text-text" onClick={() => onCollapse?.(false)} aria-label="Expand your journey" title="Expand">
           <Chevron dir="right" />
         </button>
-        <button className="mt-1 rounded-full" onClick={() => { onCollapse?.(false); toggle("progress", true); }} aria-label={`Level ${stats.level}. Open progress`} title={`Level ${stats.level} · ${stats.next - stats.xp} XP to level ${stats.level + 1}`}>
-          <LevelRing level={stats.level} frac={stats.frac} size={40} />
+        <button className="mt-1 flex h-10 w-10 items-center justify-center rounded-full border border-line-2 text-mastery" onClick={() => { onCollapse?.(false); toggle("progress", true); }} aria-label="Open learning activity" title={`${plural(conceptCount, "concept")} on your map`}>
+          <NodeIcon state="explored" size={20} />
         </button>
         <div className="my-1 h-px w-8 bg-line" />
         {SECTIONS.slice(1).map((s) => (
@@ -92,12 +103,12 @@ export default function LeftRail({ collapsed = false, onCollapse, drawer = false
       </header>
       <div className="scroll min-h-0 flex-1">
         {SECTIONS.map((s) => (
-          <Section key={s.id} id={s.id} label={s.label} open={open.has(s.id)} onToggle={() => toggle(s.id)} right={sectionCount(s.id, stats, path.length)}>
+          <Section key={s.id} id={s.id} label={s.label} open={open.has(s.id)} onToggle={() => toggle(s.id)} right={sectionCount(s.id, path.length, questionCount)}>
             {s.id === "progress" && <Progress />}
-            {s.id === "path" && <Path />}
-            {s.id === "quests" && <Quests />}
+            {s.id === "path" && <Path activeSlugs={activeSlugs} onSelectTopic={onSelectTopic} />}
+            {s.id === "quests" && <Questions activeQuestionKey={activeQuestionKey} onChooseQuestion={onChooseQuestion} />}
             {s.id === "activity" && <Activity />}
-            {s.id === "people" && <People />}
+            {s.id === "people" && <People activeSlugs={activeSlugs} />}
             {s.id === "sessions" && <Sessions />}
           </Section>
         ))}
@@ -107,11 +118,9 @@ export default function LeftRail({ collapsed = false, onCollapse, drawer = false
   );
 }
 
-function sectionCount(id: SectionId, stats: ReturnType<typeof useMapStats>, pathLen: number) {
-  if (id === "progress") return `Level ${stats.level}`;
+function sectionCount(id: SectionId, pathLen: number, questionCount: number) {
   if (id === "path") return pathLen ? plural(pathLen, "step") : null;
-  if (id === "quests") return stats.quests ? plural(stats.quests, "quest") : null;
-  if (id === "sessions") return stats.sessions ? String(stats.sessions) : null;
+  if (id === "quests") return questionCount ? String(questionCount) : null;
   return null;
 }
 
@@ -133,30 +142,22 @@ function Section({ id, label, open, onToggle, right, children }: { id: SectionId
 /* ---------- Progress ---------- */
 
 function Progress() {
-  const stats = useMapStats();
-  const { events, nodes } = useStore();
-  const model = useMemo(() => learnerModel(nodes, events), [nodes, events]);
-  const STYLE: Record<string, string> = { "visual-first": "Visual first", "explain-back": "By explaining it back", "read-first": "Reading first", balanced: "A mix of everything" };
-  const PACE: Record<string, string> = { "short-bursts": "short bursts", "deep-dives": "deep dives", steady: "a steady pace" };
-  const week = useMemo(() => {
-    const then = replay(events, Date.now() - 7 * 86_400_000);
-    const was = Object.values(then).filter((n) => n.state === "understood").length;
-    return { understood: stats.understood - was, topics: Object.keys(nodes).length - Object.keys(then).length };
-  }, [events, nodes, stats.understood]);
+  const { events, concepts, nodes } = useStore();
+  const owned = Object.values(nodes).filter(node => concepts[node.slug]);
+  const ownedSlugs = new Set(owned.map(node => node.slug));
+  const reviews = events.filter(event => ownedSlugs.has(event.slug) && event.kind === "explain" && typeof event.payload?.score === "number" && Number.isFinite(event.payload.score));
+  const reviewedSlugs = new Set(reviews.map(event => event.slug));
+  const unreviewed = owned.filter(node => !reviewedSlugs.has(node.slug));
+  const notStarted = unreviewed.filter(node => node.state === "seeded").length;
+  // A reviewed concept belongs to that category even if its graph state remains
+  // exploring. These display buckets partition ownership without changing evidence.
+  const exploring = unreviewed.length - notStarted;
+  const week = reviews.filter(event => event.at >= Date.now() - 7 * 86_400_000).length;
   return (
     <div>
-      <div className="flex items-center gap-3">
-        <LevelRing level={stats.level} frac={stats.frac} size={48} />
-        <div className="min-w-0 flex-1">
-          <p className="display text-lg leading-tight">Level {stats.level}</p>
-          <p className="text-xs text-muted">{stats.next - stats.xp} XP to level {stats.level + 1}</p>
-          <div className="kbar mt-1.5" role="meter" aria-label={`Level progress ${Math.round(stats.frac * 100)}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(stats.frac * 100)}>
-            <i style={{ width: `${Math.max(3, stats.frac * 100)}%` }} />
-          </div>
-        </div>
-      </div>
+      <p className="text-sm">{plural(owned.length, "concept")} on your map</p>
       <dl className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
-        {([["understood", "Understood", stats.understood], ["explored", "Explored", stats.explored], ["seeded", "On your map", stats.onMap]] as const).map(([st, label, v]) => (
+        {([["understood", "Reviewed", reviewedSlugs.size], ["explored", "Exploring", exploring], ["seeded", "Not started", notStarted]] as const).map(([st, label, v]) => (
           <div key={st} className="flex flex-col items-center gap-0.5 bg-panel py-2">
             <NodeIcon state={st} mastery={0.4} size={14} />
             <dd className="text-lg font-semibold tabular-nums">{v}</dd>
@@ -164,22 +165,27 @@ function Progress() {
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-xs text-muted">
-        {events.some((e) => e.kind === "watch" || e.kind === "explain") ? <>Recent learning pattern: <span className="text-text">{STYLE[model.style]}, {PACE[model.pace]}</span></> : "Your learning pattern will develop as you explore."}
-      </p>
-      <p className="mt-1 text-xs text-muted">
-        This week: <span className="text-text">{plural(Math.max(0, week.understood), "topic")} understood</span>, {plural(Math.max(0, week.topics), "new topic")}
-      </p>
+      <p className="mt-3 text-xs text-muted">{plural(week, "explanation")} reviewed this week.</p>
+      <p className="mt-1 text-xs text-muted">AI feedback is a prompt for practice, not a measure of mastery.</p>
     </div>
   );
 }
 
 /* ---------- Your path ---------- */
 
-function Path() {
-  const path = usePath();
-  const { dispatch, selected } = useStore();
-  if (!path.length) return <p className="text-sm text-muted">Ask about something you&apos;re curious about and your path will appear here.</p>;
+function useRailPath(activeSlugs?: string[]) {
+  const suggested = usePath();
+  const { concepts, edges, nodes, events } = useStore();
+  return useMemo(() => activeSlugs === undefined ? suggested.filter(step => concepts[step.slug] && nodes[step.slug]) : orderPath(activeSlugs.filter(slug => concepts[slug]), edges).map(slug => ({
+    slug, title: concepts[slug].title,
+    reason: explanationFor(slug, events) ? "Explanation reviewed · try another example" : nodes[slug]?.state === "seeded" ? "Start with a concrete example" : "Continue exploring",
+  })), [activeSlugs, suggested, concepts, edges, nodes, events]);
+}
+
+function Path({ activeSlugs, onSelectTopic }: Pick<LeftRailProps, "activeSlugs" | "onSelectTopic">) {
+  const path = useRailPath(activeSlugs);
+  const { dispatch, selected, concepts } = useStore();
+  if (!path.length) return <p className="text-sm text-muted">{Object.keys(concepts).length ? "Choose a saved question to see its path, or open a topic on your knowledge map." : "Ask about something you’re curious about and your path will appear here."}</p>;
   return (
     <ol className="relative" aria-label="Suggested order">
       <span className="absolute bottom-4 left-[11px] top-4 w-px bg-line-2" aria-hidden />
@@ -187,13 +193,14 @@ function Path() {
         <li key={s.slug} className="relative">
           <button
             className={`flex w-full items-start gap-3 rounded-md py-2 pr-2 text-left hover:bg-panel-2 ${selected === s.slug ? "bg-panel-2" : ""}`}
-            onClick={() => dispatch({ t: "select", slug: s.slug })}
+            aria-current={selected === s.slug ? "step" : undefined}
+            onClick={() => { if (onSelectTopic) onSelectTopic(s.slug); else dispatch({ t: "select", slug: s.slug }); dispatch({ t: "rail", open: false }); }}
           >
             <span className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-2xs font-semibold tabular-nums ${i === 0 ? "border-mastery bg-mastery-soft text-mastery" : "border-line-2 bg-panel text-muted"}`}>{i + 1}</span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">
                 <span className="truncate text-sm">{s.title}</span>
-                {i === 0 && <span className="shrink-0 text-2xs font-medium text-mastery">Next up</span>}
+                {i === 0 && <span className="shrink-0 text-2xs font-medium text-mastery">{activeSlugs === undefined ? "Next up" : "Suggested"}</span>}
               </span>
               <span className="block text-xs text-muted">{s.reason}</span>
             </span>
@@ -204,36 +211,29 @@ function Path() {
   );
 }
 
-/* ---------- Quests ---------- */
+/* ---------- Questions ---------- */
 
-function Quests() {
-  const { missions, nodes } = useStore();
-  if (!missions.length) return <p className="text-sm text-muted">No quests yet. Ask about anything you&apos;re curious about. Vague is fine.</p>;
+function Questions({ activeQuestionKey, onChooseQuestion }: Pick<LeftRailProps, "activeQuestionKey" | "onChooseQuestion">) {
+  const { missions, concepts, nodes, events } = useStore();
+  const paths = learningPaths(missions, concepts);
+  const pending = missions.filter(mission => mission.status !== "done");
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? paths : paths.filter((path, index) => index < 6 || path.key === activeQuestionKey);
+  if (!paths.length && !pending.length) return <p className="text-sm text-muted">Ask about anything you&apos;re curious about. Your questions stay saved here.</p>;
   return (
     <ul className="space-y-1.5">
-      {missions.slice(0, 6).map((m) => {
-        const slugs = m.slugs ?? [];
-        const done = slugs.filter((s) => nodes[s] && nodes[s].state !== "seeded").length;
-        const understood = slugs.filter((s) => nodes[s]?.state === "understood").length;
-        const complete = slugs.length > 0 && understood === slugs.length;
+      {pending.slice(0, 3).map(mission => <li key={mission.id} className="rounded-md border border-line bg-panel-2 px-3 py-2"><p className="truncate text-sm" title={mission.text}>{mission.text}</p><p className={`mt-0.5 text-xs ${mission.status === "error" ? "text-err" : "text-muted"}`}>{mission.status === "error" ? "Couldn't add concepts. Retry in the question box." : "Adding concepts…"}</p></li>)}
+      {visible.map(path => {
+        const saved = path.slugs.filter(slug => nodes[slug]);
+        const reviewed = saved.filter(slug => explanationFor(slug, events)).length;
+        const content = <><span className="block truncate text-sm" title={path.question}>{path.question}</span><span className="mt-0.5 block text-xs text-muted">{plural(saved.length, "concept")}{reviewed ? ` · ${reviewed} reviewed` : ""}</span></>;
         return (
-          <li key={m.id} className="rounded-md border border-line bg-panel-2 px-3 py-2">
-            <p className="truncate text-sm" title={m.text}>{m.text}</p>
-            {m.status === "running" ? (
-              <p className="mt-0.5 text-xs text-muted">Adding topics…</p>
-            ) : m.status === "error" ? (
-              <p className="mt-0.5 text-xs text-err">Couldn&apos;t add topics. Try again.</p>
-            ) : slugs.length ? (
-              <>
-                <p className={`mt-0.5 text-xs ${complete ? "text-success" : "text-muted"}`}>{complete ? "✓ Quest complete" : `${done} of ${plural(slugs.length, "topic")} explored`}</p>
-                <span className="kbar mt-1.5" aria-hidden><i style={{ width: `${(done / slugs.length) * 100}%` }} /></span>
-              </>
-            ) : (
-              <p className="mt-0.5 text-xs text-muted">Added {plural(m.added, "topic")}</p>
-            )}
+          <li key={path.key} className={`overflow-hidden rounded-md border bg-panel-2 ${activeQuestionKey === path.key ? "border-mastery/50" : "border-line"}`}>
+            {onChooseQuestion ? <button className="w-full px-3 py-2 text-left hover:bg-panel" onClick={() => onChooseQuestion(path.key)} aria-current={activeQuestionKey === path.key ? "true" : undefined}>{content}</button> : <div className="px-3 py-2">{content}</div>}
           </li>
         );
       })}
+      {paths.length > 6 && <li><button className="mt-1 text-xs text-muted hover:text-text" onClick={() => setShowAll(value => !value)}>{showAll ? "Show fewer questions" : `Show all ${paths.length} questions`}</button></li>}
     </ul>
   );
 }
@@ -260,7 +260,7 @@ function Activity() {
 
 /** Plain-language activity from the event log plus notes (matches). Quick runs of "added" collapse into one line. */
 function useActivity(): Item[] {
-  const { events, concepts, notes } = useStore();
+  const { events, concepts, notes, peerNames } = useStore();
   return useMemo(() => {
     const title = (s: string) => concepts[s]?.title ?? CATALOG[s]?.title ?? s;
     const em = (s: string) => <em className="not-italic text-text">{title(s)}</em>;
@@ -269,7 +269,7 @@ function useActivity(): Item[] {
     const flush = () => {
       if (!run) return;
       const [first, ...rest] = run.slugs;
-      out.push({ key: `seed-${run.id}`, at: run.at, node: <>Added {em(first)}{rest.length ? ` and ${plural(rest.length, "more topic")}` : ""} to your map</> });
+      out.push({ key: `seed-${run.id}`, at: run.at, node: <>Added {em(first)}{rest.length ? ` and ${plural(rest.length, "more concept")}` : ""} to your map</> });
       run = null;
     };
     for (const e of events) {
@@ -279,54 +279,56 @@ function useActivity(): Item[] {
         run = { slugs: [e.slug], at: e.at, id: e.id };
         continue;
       }
-      if (e.kind === "explain") out.push({ key: `e${e.id}`, at: e.at, node: <>Explained {em(e.slug)} in your own words</> });
-      else if (e.kind === "watch") out.push({ key: `e${e.id}`, at: e.at, node: <>Completed learning on {em(e.slug)}</> });
-      else if (e.kind === "session") out.push({ key: `e${e.id}`, at: e.at, node: <>Learned {em(e.slug)} with {personName(String(e.payload?.with ?? "a peer"))}</> });
+      if (e.kind === "explain") out.push({ key: `e${e.id}`, at: e.at, node: <>Explanation reviewed for {em(e.slug)}</> });
+      else if (e.kind === "watch") out.push({ key: `e${e.id}`, at: e.at, node: <>{e.payload?.source ? "Read a source on" : "Practiced"} {em(e.slug)}</> });
+      else if (e.kind === "session") out.push({ key: `e${e.id}`, at: e.at, node: <>Discussed {em(e.slug)} with {personName(String(e.payload?.with ?? "a peer"), peerNames)}</> });
     }
     flush();
     notes.forEach((n, i) => out.push({ key: `n${i}-${n.at}`, at: n.at, node: n.text }));
     return out.sort((a, b) => b.at - a.at);
-  }, [events, concepts, notes]);
+  }, [events, concepts, notes, peerNames]);
 }
 
 /* ---------- Connections ---------- */
 
-function People() {
-  const { explorers, nodes } = useStore();
+function People({ activeSlugs }: { activeSlugs?: string[] }) {
+  const { explorers, nodes, concepts, dispatch } = useStore();
   const sessions = useSessions();
+  const available = activeSlugs === undefined ? explorers : explorers.filter(peer => peer.activeConcepts.some(slug => activeSlugs.includes(slug)));
   const now = useNow();
   const learned = useMemo(() => {
-    const m = new Map<string, { name: string; topics: Set<string>; at: number }>();
+    const m = new Map<string, { id: string; name: string; topics: Set<string>; at: number }>();
     for (const s of sessions) {
-      const p = m.get(s.peer) ?? { name: s.peer, topics: new Set<string>(), at: 0 };
+      const p = m.get(s.peerId) ?? { id: s.peerId, name: s.peer, topics: new Set<string>(), at: 0 };
       s.topics.forEach((t) => p.topics.add(t));
       p.at = Math.max(p.at, s.at);
-      m.set(s.peer, p);
+      m.set(s.peerId, p);
     }
     return [...m.values()].sort((a, b) => b.at - a.at);
   }, [sessions]);
-  const color = (name: string) => explorers.find((e) => e.name === name)?.color ?? "#85858d";
+  const color = (id: string) => explorers.find((e) => e.id === id)?.color ?? "#85858d";
   const runMatch = useMatchJob();
   const [looking, setLooking] = useState<"idle" | "looking" | "none">("idle");
   const [error, setError] = useState<string | null>(null);
   const find = async () => {
     setLooking("looking"); setError(null);
     try {
-      const m = await runMatch({ quietIfNone: true });
+      const m = await runMatch({ quietIfNone: true, ...(activeSlugs === undefined ? {} : { conceptSlugs: activeSlugs }) });
+      if (m) dispatch({ t: "rail", open: false });
       setLooking(m ? "idle" : "none");
     } catch { setError("Couldn't search for a peer. Please try again."); setLooking("idle"); }
   };
   return (
     <div className="space-y-3">
       <div>
-        <h4 className="mb-1 text-xs text-muted">Learned with</h4>
+        <h4 className="mb-1 text-xs text-muted">Conversations with</h4>
         {learned.length === 0 ? (
           <p className="text-sm text-muted">No one yet.</p>
         ) : (
           <ul className="space-y-1">
             {learned.map((p) => (
-              <li key={p.name} className="flex items-center gap-2.5 py-1">
-                <Head color={color(p.name)} name={p.name} size={22} />
+              <li key={p.id} className="flex items-center gap-2.5 py-1">
+                <Head color={color(p.id)} name={p.name} size={22} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm">{p.name}</span>
                   <span className="block truncate text-xs text-muted">{[...p.topics].join(", ")}</span>
@@ -338,21 +340,21 @@ function People() {
         )}
       </div>
       <div>
-        <button className="btn mb-2 w-full" onClick={find} disabled={looking === "looking"}>{looking === "looking" ? "Looking…" : "Find someone to learn with"}</button>
-        {looking === "looking" && <OperationStatus label="Checking available learners" detail="Comparing saved concepts, language, available time and matching consent. This is local eligibility ranking, not a model response." />}
-        {looking === "none" && <p className="mb-2 text-xs text-muted">No one a step ahead right now. Try again after you learn something new.</p>}
+        <button className="btn mb-2 w-full" onClick={find} disabled={looking === "looking" || activeSlugs?.length === 0}>{looking === "looking" ? "Looking…" : "Find someone to learn with"}</button>
+        {looking === "looking" && <OperationStatus label="Checking available learners" detail="Looking for shared topics, a common language and enough time to learn together." />}
+        {looking === "none" && <p className="mb-2 text-xs text-muted">No suitable peer is available for this question right now. Keep exploring and try again later.</p>}
         {error && <p className="mb-2 text-xs text-err" role="alert">{error}</p>}
         <h4 className="mb-1 text-xs text-muted">Learning now</h4>
-        {!explorers.length && <p className="text-sm text-muted">No other learners are available right now.</p>}
+        {!available.length && <p className="text-sm text-muted">No other learners are available around these topics right now.</p>}
         <ul>
-          {explorers.map((e) => {
-            const at = e.activeConcepts[0];
+          {available.map((e) => {
+            const at = (activeSlugs ? e.activeConcepts.find(slug => activeSlugs.includes(slug)) : undefined) ?? e.activeConcepts[0];
             return (
               <li key={e.id} className="flex items-center gap-2.5 py-1">
                 <Head color={e.color} name={e.name} size={22} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm">{e.name}</span>
-                  <span className="block truncate text-xs text-muted">{nodes[at] ? "on a topic near yours" : `on ${CATALOG[at]?.title ?? at}`}</span>
+                  <span className="block text-sm">{e.name}{e.demo ? " · sample" : ""}</span>
+                  <span className="block truncate text-xs text-muted">{at ? `Exploring ${concepts[at]?.title ?? CATALOG[at]?.title ?? (nodes[at] ? "a shared topic" : at.replaceAll("-", " "))}` : "Available to learn together"}</span>
                 </span>
                 {e.openToMatch && <span className="dot bg-success" role="img" aria-label="Open to learn together" title="Open to learn together" />}
               </li>
@@ -366,37 +368,43 @@ function People() {
 
 /* ---------- Sessions ---------- */
 
-/** Sessions grouped from "session" events (same grouping as useMapStats). */
+/** Saved room IDs come from the authorized snapshot; legacy activity adds no guessed room links. */
 function useSessions() {
-  const { events, concepts } = useStore();
+  const { events, concepts, sessions, peerNames, dataMode } = useStore();
   return useMemo(() => {
-    const m = new Map<string, { peer: string; topics: string[]; at: number }>();
+    const m = new Map<string, { key: string; id?: string; peerId: string; peer: string; topics: string[]; at: number }>();
+    const title = (slug: string) => concepts[slug]?.title ?? CATALOG[slug]?.title ?? slug.replaceAll("-", " ");
+    for (const saved of sessions) {
+      const key = saved.id ?? `${saved.peer}|${Math.round(saved.at / 60_000)}`;
+      m.set(key, { key, id: dataMode === "local" ? saved.id : undefined, peerId: saved.peer, peer: personName(saved.peer, peerNames), topics: saved.concepts.map(title), at: saved.at });
+    }
     for (const e of events) {
       if (e.kind !== "session") continue;
-      const peer = personName(String(e.payload?.with ?? "a peer"));
-      const key = String(e.payload?.sessionId ?? `${String(e.payload?.with ?? "")}|${Math.round(e.at / 60_000)}`);
-      const s = m.get(key) ?? { peer, topics: [], at: e.at };
-      s.topics.push(concepts[e.slug]?.title ?? CATALOG[e.slug]?.title ?? e.slug);
+      const peerId = String(e.payload?.with ?? "a peer");
+      const key = String(e.payload?.sessionId ?? `${peerId}|${Math.round(e.at / 60_000)}`);
+      const s = m.get(key) ?? { key, peerId, peer: personName(peerId, peerNames), topics: [], at: e.at };
+      if (!s.topics.includes(title(e.slug))) s.topics.push(title(e.slug));
       s.at = Math.max(s.at, e.at);
       m.set(key, s);
     }
     return [...m.values()].sort((a, b) => b.at - a.at);
-  }, [events, concepts]);
+  }, [events, concepts, sessions, peerNames, dataMode]);
 }
 
 function Sessions() {
   const sessions = useSessions();
   const now = useNow();
-  if (!sessions.length) return <p className="text-sm text-muted">No sessions yet. Accept a match on the map to learn with someone for 10 minutes.</p>;
+  if (!sessions.length) return <p className="text-sm text-muted">No sessions yet. A shared conversation starts when both people accept a match.</p>;
   return (
     <ul className="space-y-1.5">
-      {sessions.map((s, i) => (
-        <li key={i} className="rounded-md border border-line bg-panel-2 px-3 py-2">
+      {sessions.map(s => (
+        <li key={s.key} className="rounded-md border border-line bg-panel-2 px-3 py-2">
           <p className="flex items-baseline justify-between gap-2 text-sm">
             <span>with {s.peer}</span>
             <span className="text-xs text-dim">{relTime(s.at, now)}</span>
           </p>
           <p className="truncate text-xs text-muted">{s.topics.join(" · ")}</p>
+          {s.id && <Link href={`/session?s=${encodeURIComponent(s.id)}`} className="mt-1.5 inline-block text-xs text-mastery hover:underline">View conversation →</Link>}
         </li>
       ))}
     </ul>

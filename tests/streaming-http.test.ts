@@ -27,10 +27,11 @@ let repo:FurtherRepository,directory:string,cookie:string;
 const actorId=randomUUID(),peerId=randomUUID();
 const shared=globalThis as typeof globalThis & {__furtherLocalRepository?:Promise<FurtherRepository>};
 const oldFetch=globalThis.fetch;
-const originalEnv={local:process.env.FURTHER_LOCAL_DIR,mode:process.env.FURTHER_MODEL_MODE,key:process.env.META_API_KEY};
+const originalEnv={local:process.env.FURTHER_LOCAL_DIR,mode:process.env.FURTHER_MODEL_MODE,key:process.env.META_API_KEY,profiles:process.env.FURTHER_ENABLE_LOCAL_PROFILES};
 before(async()=>{
   directory=await mkdtemp(join(tmpdir(),"further-streaming-"));
   process.env.FURTHER_LOCAL_DIR=directory;process.env.FURTHER_MODEL_MODE="fixture";
+  process.env.FURTHER_ENABLE_LOCAL_PROFILES="1";
   repo=await createRepository();shared.__furtherLocalRepository=Promise.resolve(repo);
   for(const id of [actorId,peerId]){
     await repo.ensureUser(id,"Streaming learner");
@@ -43,7 +44,7 @@ before(async()=>{
 });
 after(async()=>{
   globalThis.fetch=oldFetch;delete shared.__furtherLocalRepository;
-  for(const [key,value] of [["FURTHER_LOCAL_DIR",originalEnv.local],["FURTHER_MODEL_MODE",originalEnv.mode],["META_API_KEY",originalEnv.key]]){
+  for(const [key,value] of [["FURTHER_LOCAL_DIR",originalEnv.local],["FURTHER_MODEL_MODE",originalEnv.mode],["META_API_KEY",originalEnv.key],["FURTHER_ENABLE_LOCAL_PROFILES",originalEnv.profiles]]){
     if(value===undefined)delete process.env[key!];else process.env[key!]=value;
   }
   await repo.close();await rm(directory,{recursive:true,force:true});

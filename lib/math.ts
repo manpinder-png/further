@@ -3,7 +3,10 @@
 import type { EventKind, FEvent, NodeState, UserNode } from "./types";
 
 export const HALF_LIFE_HOURS = 72; // interest decays with a 3-day half-life
-export const UNDERSTOOD_AT = 0.7; // mastery at which a node becomes "understood" (our choice, tune with evals)
+// Legacy field/state names remain compatible with saved events. This value now
+// represents the best AI-reviewed explanation, not validated human mastery.
+// The UI calls the state "Explained". Attendance and viewing cannot earn it.
+export const UNDERSTOOD_AT = 1;
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -38,16 +41,17 @@ export function applyEvent(node: UserNode | undefined, ev: FEvent): UserNode {
       interest -= 0.3;
       break;
     case "watch":
-      mastery += 0.2;
+      interest += 0.1;
       break;
     case "explain": {
-      const score = Number(ev.payload?.score ?? 0);
-      mastery += (Math.max(0, Math.min(3, score)) / 3) * 0.5;
+      const raw = Number(ev.payload?.score ?? 0);
+      const score = Number.isFinite(raw) ? Math.max(0, Math.min(3, raw)) : 0;
+      // Repeating a partial answer must never accumulate into a full result.
+      mastery = Math.max(mastery, score / 3);
       interest += 0.1;
       break;
     }
     case "session":
-      mastery += 0.2;
       interest += 0.2;
       break;
   }

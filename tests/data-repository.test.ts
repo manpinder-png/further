@@ -81,6 +81,65 @@ test("local data: only eligible, fresh, consented peer projection is exposed",as
   } finally {await r.close();}
 });
 
+test("local data: concurrent invitations reserve a learner once and reject incompatible retries",async()=>{
+  const r=await createRepository();
+  try {
+    const {a,b,c}=await learners(r);
+    const results=await Promise.allSettled([r.invite(a,b,"gpu"),r.invite(c,b,"gpu")]);
+    assert.equal(results.filter(result=>result.status==="fulfilled").length,1);
+    assert.equal(results.filter(result=>result.status==="rejected").length,1);
+    const invitations=(await r.getInvitations(b)).filter(inv=>inv.status==="pending");
+    assert.equal(invitations.length,1);
+    const inv=invitations[0],other=inv.fromUserId===b?inv.toUserId:inv.fromUserId;
+    const symmetric=await r.invite(b,other,"gpu");
+    assert.equal(symmetric.id,inv.id);
+    await assert.rejects(r.invite(b,other,"memory-bandwidth"),/another pending invitation/);
+    await r.respondToInvite(b,inv.id,"accept");
+    await r.respondToInvite(other,inv.id,"accept");
+    await assert.rejects(r.invite(a===other?c:a,b,"gpu"),/already in a session/);
+    assert.equal((await r.getInvitations(b)).filter(item=>item.status==="accepted").length,1);
+  } finally {await r.close();}
+});
+
+test("local data: pending reservations hide busy peers and preserve only the exact pair topic",async()=>{
+  const r=await createRepository();
+  try {
+    const {a,b,c}=await learners(r);
+    const invite=await r.invite(a,b,"gpu");
+    const fromA=await r.listCandidates(a),fromB=await r.listCandidates(b);
+    assert.deepEqual(fromA.map(peer=>peer.id),[b]);
+    assert.deepEqual(fromB.map(peer=>peer.id),[a]);
+    assert.deepEqual(fromA[0].activeConcepts,["gpu"]);
+    assert.deepEqual(fromB[0].activeConcepts,["gpu"]);
+    assert.deepEqual(await r.listCandidates(c),[]);
+    assert.equal((await r.invite(b,a,"gpu")).id,invite.id);
+    await r.respondToInvite(b,invite.id,"decline");
+    assert.deepEqual(new Set((await r.listCandidates(c)).map(peer=>peer.id)),new Set([a,b]));
+  } finally {await r.close();}
+});
+
+test("local data: minimum shared time is enforced during invitation and every acceptance",async()=>{
+  const r=await createRepository();
+  try {
+    const {a,b}=await learners(r);
+    await r.updateProfile(b,{availableMinutes:5});
+    await assert.rejects(r.invite(a,b,"gpu"),/at least 10 minutes/);
+    assert.deepEqual(await r.getInvitations(a),[]);
+    await r.updateProfile(b,{availableMinutes:20});
+    const inv=await r.invite(a,b,"gpu");
+    await r.updateProfile(b,{availableMinutes:5});
+    await assert.rejects(r.respondToInvite(a,inv.id,"accept"),/at least 10 minutes/);
+    assert.deepEqual((await r.getInvitation(a,inv.id)).acceptedBy,[]);
+    await r.updateProfile(b,{availableMinutes:20});
+    await r.respondToInvite(a,inv.id,"accept");
+    await r.updateProfile(a,{availableMinutes:5});
+    await assert.rejects(r.respondToInvite(b,inv.id,"accept"),/at least 10 minutes/);
+    const waiting=await r.getInvitation(a,inv.id);
+    assert.equal(waiting.status,"pending");assert.equal(waiting.sessionId,undefined);
+    assert.deepEqual(waiting.acceptedBy,[a]);
+  } finally {await r.close();}
+});
+
 test("local data: dual acceptance pins the exact room; retries and completion are idempotent",async()=>{
   const r=await createRepository();
   try {
@@ -92,6 +151,9 @@ test("local data: dual acceptance pins the exact room; retries and completion ar
     assert.equal(accepted1.sessionId,accepted2.sessionId);
     const sid=accepted1.sessionId!;
     assert.equal((await r.getInvitation(a,i1.id)).sessionId,sid);
+    const ownSnapshot=await r.getSnapshot(a);
+    assert.deepEqual(ownSnapshot.peerNames,{[b]:"Blair"});
+    assert.equal(c in ownSnapshot.peerNames!,false);
     assert.equal((await r.listCandidates(c)).some(p=>p.id===a||p.id===b),false);
     assert.deepEqual(await r.listCandidates(a),[]);
     await assert.rejects(r.getSession(c,sid),/not found/);
@@ -174,4 +236,36 @@ test("local data: a second process owner cannot open the same persistent directo
   const dir=await mkdtemp(join(tmpdir(),"further-lock-"));
   const dataDir=join(dir,"pg"),r=await createRepository({dataDir});
   try {await assert.rejects(createRepository({dataDir}),/already open/);} finally {await r.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test("saved solo lesson lookup survives reopen, skips failed/foreign/mode variants and ignores recent-run pagination", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "further-lessons-"));
+  const dataDir = join(directory, "pg");
+  let repo = await createRepository({ dataDir });
+  try {
+    const { a, b } = await learners(repo);
+    const instruction = "Lesson recipe v1, depth 1";
+    const persist = async (actorId: string, message: string, mode: "live" | "fixture", fail = false) => {
+      const id = randomUUID();
+      await repo.beginAgentRun({ id, actorId, agentId: "learning-companion", input: { mode: "solo", concept: "gpu", message } });
+      await repo.finishAgentRun(actorId, id, fail ? { error: "A failed attempt" } : { output: { mode, data: { body: "A saved lesson" } } });
+      return id;
+    };
+    const id = await persist(a, instruction, "live");
+    await persist(a, "Lesson recipe v1, depth 2", "live");
+    await persist(a, instruction, "fixture");
+    await persist(b, instruction, "live");
+    await persist(a, instruction, "live", true);
+    for (let i = 0; i < 105; i++) {
+      const unrelated = randomUUID();
+      await repo.beginAgentRun({ id: unrelated, actorId: a, agentId: "metadata", input: { text: `Unrelated ${i}` } });
+      await repo.finishAgentRun(a, unrelated, { output: { mode: "live" } });
+    }
+    await repo.close(); repo = await createRepository({ dataDir });
+    assert.equal((await repo.getLatestLessonRun(a, "gpu", instruction, "live"))?.id, id);
+    assert.notEqual((await repo.getLatestLessonRun(b, "gpu", instruction, "live"))?.id, id);
+    assert.equal(await repo.getLatestLessonRun(a, "gpu", "Changed recipe", "live"), null);
+    assert.equal(await repo.getLatestLessonRun(a, "memory-bandwidth", instruction, "live"), null);
+    assert.equal((await repo.getLatestLessonRun(a, "gpu", instruction, "fixture"))?.output?.mode, "fixture");
+  } finally { await repo.close(); await rm(directory, { recursive: true, force: true }); }
 });

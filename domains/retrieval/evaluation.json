@@ -1,0 +1,23 @@
+{
+  "description": "Small synthetic smoke evaluation, not a production benchmark. Expected labels are hand-written and include different wording plus nearby distractors.",
+  "passages": [
+    {"id":"gpu-compute","text":"GPU parallelism. Graphics processors use many arithmetic lanes to apply matrix operations to batches of data at the same time."},
+    {"id":"gpu-memory","text":"GPU memory bandwidth. Computation can stall while data moves from device memory to arithmetic units; increasing bandwidth feeds the processor."},
+    {"id":"bread","text":"Bread fermentation. Yeast consumes sugars and produces carbon dioxide, forming gas bubbles that make dough rise."},
+    {"id":"db-index","text":"Database B-tree indexes. A branching search tree narrows a SQL lookup to a small range instead of scanning every table row."},
+    {"id":"auth","text":"Federated sign-in. An identity provider authenticates a person and issues a signed token that a backend verifies before granting access."},
+    {"id":"photo","text":"Camera exposure. Aperture controls incoming light and depth of field; shutter duration affects motion blur; sensor sensitivity affects noise."},
+    {"id":"semantic","text":"Semantic vector search. Text embeddings represent meaning so nearest-neighbor distance can retrieve related passages despite different vocabulary."},
+    {"id":"hierarchy","text":"Hierarchical SQL queries. A recursive common table expression follows parent-child edges to find ancestors or descendants across several levels."}
+  ],
+  "queries": [
+    {"text":"How do thousands of cores split matrix calculations?","expected":"gpu-compute"},
+    {"text":"Why can graphics cards idle while waiting for data?","expected":"gpu-memory"},
+    {"text":"Can yeast make my dough rise?","expected":"bread"},
+    {"text":"Why is a tree lookup faster than reading every row?","expected":"db-index"},
+    {"text":"How do login providers prove who I am?","expected":"auth"},
+    {"text":"How do shutter speed and aperture interact?","expected":"photo"},
+    {"text":"Find related ideas even when the words differ","expected":"semantic"},
+    {"text":"What allows SQL to walk parent-child links?","expected":"hierarchy"}
+  ]
+}

@@ -1,0 +1,88 @@
+# Further's explicitly selected development boundaries, not a generic compliance certification.
+let clusters = Resources.*[ Type == 'AWS::RDS::DBCluster' ]
+let instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+let pools = Resources.*[ Type == 'AWS::Cognito::UserPool' ]
+let clients = Resources.*[ Type == 'AWS::Cognito::UserPoolClient' ]
+let groups = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ]
+let facebook = Resources.*[ Type == 'AWS::Cognito::UserPoolIdentityProvider' Properties.ProviderType == 'Facebook' ]
+
+rule database_encrypted_managed_and_private when %clusters !empty {
+  %clusters {
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+    Properties {
+      StorageEncrypted == true
+      ManageMasterUserPassword == true
+      MasterUserPassword !exists
+      EnableHttpEndpoint == true
+      DeletionProtection == true
+      BackupRetentionPeriod >= 7
+      ServerlessV2ScalingConfiguration.MinCapacity == 0
+      ServerlessV2ScalingConfiguration.SecondsUntilAutoPause == 300
+    }
+  }
+}
+rule database_writer_private when %instances !empty {
+  %instances {
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+    Properties.PubliclyAccessible == false
+    Properties.DBInstanceClass == 'db.serverless'
+  }
+}
+rule no_database_ingress when %groups !empty {
+  %groups.Properties.SecurityGroupIngress empty
+}
+rule no_network_compute_gateways {
+  Resources.*[ Type == 'AWS::EC2::NatGateway' ] empty
+  Resources.*[ Type == 'AWS::EC2::InternetGateway' ] empty
+  Resources.*[ Type == 'AWS::Lambda::Function' ] empty
+}
+rule media_private_encrypted_and_retained when %buckets !empty {
+  %buckets {
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+    Properties {
+      PublicAccessBlockConfiguration.BlockPublicAcls == true
+      PublicAccessBlockConfiguration.BlockPublicPolicy == true
+      PublicAccessBlockConfiguration.IgnorePublicAcls == true
+      PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+      BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm == 'AES256'
+      VersioningConfiguration.Status == 'Enabled'
+      OwnershipControls.Rules[*].ObjectOwnership == 'BucketOwnerEnforced'
+    }
+  }
+}
+rule cognito_lite_and_verified_email when %pools !empty {
+  %pools {
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+    Properties.UserPoolTier == 'LITE'
+    Properties.DeletionProtection == 'ACTIVE'
+    Properties.Policies.PasswordPolicy.MinimumLength >= 12
+    Properties.AutoVerifiedAttributes[*] == 'email'
+  }
+}
+rule cognito_public_code_client when %clients !empty {
+  %clients.Properties {
+    GenerateSecret == false
+    EnableTokenRevocation == true
+    PreventUserExistenceErrors == 'ENABLED'
+    AllowedOAuthFlows[*] == 'code'
+    WriteAttributes[*] != 'email_verified'
+  }
+}
+rule facebook_scoped_and_versioned when %facebook !empty {
+  %facebook {
+    Condition == 'HasFacebook'
+    Properties {
+      ProviderDetails.client_id.Ref == 'FacebookAppId'
+      ProviderDetails.api_version.Ref == 'FacebookApiVersion'
+      ProviderDetails.authorize_scopes == 'public_profile,email'
+      AttributeMapping.email == 'email'
+      AttributeMapping.name == 'name'
+      AttributeMapping.email_verified !exists
+    }
+  }
+}

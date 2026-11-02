@@ -1,16 +1,17 @@
 "use client";
-// The knowledge map: a radial flowchart with you at the centre (DESIGN D34–D37).
-// - Rings are state: understood (inner, glowing) → explored → on your map (outer, in fog).
+// The knowledge map: a radial flowchart around your question or profile (DESIGN D34–D37).
+// - Rings are state: explained (inner, glowing) → explored → on your map (outer, in fog).
 // - Arrows: prerequisite. Solid: part of. Dotted: related. Paths you've mastered glow and flow.
-// - Living: when the graph changes, cards glide to their new place. Learning pulls a topic
-//   inward; fading pushes it out into the fog. Suggested topics appear as ghost cards.
+// - Living: when the graph changes, cards glide to their new place. Explanation evidence
+//   and recent activity shape the view. Suggested topics appear as ghost cards.
 // - Cards are real buttons: Tab, arrow keys between topics, Enter opens, Esc closes (page).
 // - Pan by dragging the background, zoom with the wheel, pinch or the +/− buttons.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Concept, Edge, EdgeKind, Explorer, UserNode } from "@/lib/types";
 import type { Suggestion } from "@/lib/insight";
-import { SX, SY, YOU, cardWidth, exitPoint, layoutRadial, type LNode, type LState, type Placed } from "@/lib/graph-layout";
-import { liveInterest, opacityFor } from "@/lib/math";
+import { SX, SY, YOU, aggregateTopicEdges, cardWidth, exitPoint, layoutRadial, layoutSummary, type LNode, type LState, type Placed } from "@/lib/graph-layout";
+import type { KnowledgeTopicGroup } from "@/lib/knowledge-overview";
+import { liveInterest } from "@/lib/math";
 import { STATE_LABEL } from "@/lib/client/format";
 import { Head, NodeIcon, useReducedMotion } from "@/components/ui/bits";
 
@@ -30,10 +31,16 @@ export interface KnowledgeMapProps {
   /** Show unlock bursts and pop-ins (off during replay). */
   celebrate?: boolean;
   you: { name: string; level: number; frac: number };
+  /** A saved question scopes the view; the full title remains available in its tooltip. */
+  focus?: { title: string; topicCount: number };
+  /** Semantic levels for My knowledge map only. These groups never become learner evidence. */
+  overview?: { groups: KnowledgeTopicGroup[]; activeGroupId: string | null; currentGroup?: KnowledgeTopicGroup | null; showGroups?: boolean; levelKey?: string; onEnter: (id: string) => void; onExit: () => void };
+  /** Space reserved for the view controls and hierarchy breadcrumb. */
+  topInset?: number;
 }
 
 type Cam = { x: number; y: number; z: number };
-const ZMIN = 0.45, ZMAX = 2.2;
+const ZMIN = 0.1, ZMAX = 2.2;
 const RANK: Record<LState, number> = { understood: 2, explored: 1, seeded: 0, suggested: -1 };
 const q = (v: number) => Math.round(v * 20) / 20; // quantize so tiny decay doesn't re-layout
 
@@ -41,34 +48,53 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
   const reduced = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const activeGroup = p.overview?.currentGroup ?? p.overview?.groups.find(group => group.id === p.overview?.activeGroupId);
+  const inOverview = Boolean(p.overview && (p.overview.showGroups ?? !activeGroup));
+  const compactSummary = inOverview && size.w > 0 && size.w < 480;
+  const semanticLevel = p.overview ? p.overview.levelKey ?? (activeGroup ? `group:${activeGroup.id}` : "overview") : null;
+  const groups = useMemo(() => {
+    const available = new Set(p.concepts.filter(concept => p.nodes[concept.slug]).map(concept => concept.slug));
+    return (p.overview?.groups ?? []).map(group => ({ ...group, conceptSlugs: [...new Set(group.conceptSlugs)].filter(slug => available.has(slug)) })).filter(group => group.conceptSlugs.length > 0);
+  }, [p.overview?.groups, p.concepts, p.nodes]);
+  const scope = useMemo(() => activeGroup ? new Set(activeGroup.conceptSlugs) : null, [activeGroup]);
+  const concepts = useMemo(() => inOverview ? [] : p.concepts.filter(concept => (!scope || scope.has(concept.slug)) && (concept.slug !== activeGroup?.anchorSlug || scope?.size === 1)), [inOverview, p.concepts, scope, activeGroup?.anchorSlug]);
+  const edges = useMemo(() => inOverview ? [] : p.edges.filter(edge => !scope || (scope.has(edge.src) && scope.has(edge.dst))), [inOverview, p.edges, scope]);
+  const suggestions = useMemo(() => p.overview ? [] : p.suggestions, [p.overview, p.suggestions]);
+  const summaryLinks = useMemo(() => inOverview ? aggregateTopicEdges(groups, p.edges) : [], [inOverview, groups, p.edges]);
+  const navigationOrigin = useRef<{ level: string; x: number; y: number } | null>(null);
+  const previousLevel = useRef<string | null>(semanticLevel);
+  const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(p);
+  latest.current = p;
+  useEffect(() => () => { if (navigationTimer.current) clearTimeout(navigationTimer.current); }, []);
 
   /* ---------- Layout ---------- */
   const lnodes = useMemo<LNode[]>(() => {
     const out: LNode[] = [];
-    for (const c of p.concepts) {
+    for (const c of concepts) {
       const n = p.nodes[c.slug];
       if (n) out.push({ slug: c.slug, state: n.state, mastery: q(n.mastery), interest: q(liveInterest(n, p.now)), w: cardWidth(n.state, c.title) });
     }
-    for (const s of p.suggestions) out.push({ slug: s.slug, state: "suggested", mastery: 0, interest: 0, anchor: s.anchor, w: cardWidth("suggested", s.title) });
+    for (const s of suggestions) out.push({ slug: s.slug, state: "suggested", mastery: 0, interest: 0, anchor: s.anchor, w: cardWidth("suggested", s.title) });
     return out;
-  }, [p.concepts, p.nodes, p.suggestions, p.now]);
-  const layoutKey = JSON.stringify(lnodes) + p.edges.length;
+  }, [concepts, p.nodes, suggestions, p.now]);
+  const layoutKey = p.overview ? JSON.stringify([lnodes, edges, inOverview ? groups.map(group => [group.id, group.title, group.conceptSlugs.length]) : [], compactSummary]) : JSON.stringify(lnodes) + edges.length;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const layout = useMemo(() => layoutRadial(lnodes, p.edges), [layoutKey]);
+  const layout = useMemo(() => inOverview ? layoutSummary(groups.map(group => ({ id: `group:${group.id}`, title: group.title, conceptCount: group.conceptSlugs.length })), { compact: compactSummary }) : layoutRadial(lnodes, edges), [layoutKey]);
   const info = useMemo(() => new Map(lnodes.map((n) => [n.slug, n])), [lnodes]);
 
   const titles = useMemo(() => {
     const m = new Map<string, string>();
-    p.concepts.forEach((c) => m.set(c.slug, c.title));
-    p.suggestions.forEach((s) => m.set(s.slug, s.title));
+    concepts.forEach((c) => m.set(c.slug, c.title));
+    suggestions.forEach((s) => m.set(s.slug, s.title));
     return m;
-  }, [p.concepts, p.suggestions]);
+  }, [concepts, suggestions]);
 
   const allEdges = useMemo(() => {
-    const list: { src: string; dst: string; kind: EdgeKind; ghost?: boolean }[] = p.edges.filter((e) => e.src !== e.dst && layout.pos[e.src] && layout.pos[e.dst]);
-    for (const s of p.suggestions) if (layout.pos[s.anchor]) list.push({ src: s.anchor, dst: s.slug, kind: s.kind, ghost: true });
+    const list: { src: string; dst: string; kind: EdgeKind; ghost?: boolean }[] = edges.filter((e) => e.src !== e.dst && layout.pos[e.src] && layout.pos[e.dst]);
+    for (const s of suggestions) if (layout.pos[s.anchor]) list.push({ src: s.anchor, dst: s.slug, kind: s.kind, ghost: true });
     return list;
-  }, [p.edges, p.suggestions, layout]);
+  }, [edges, suggestions, layout]);
 
   /* ---------- Living motion: glide from current to target ---------- */
   const cur = useRef(new Map<string, { x: number; y: number }>());
@@ -79,9 +105,13 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
     const T = layout.pos;
     const parentOf = (s: string) => allEdges.find((e) => e.dst === s)?.src;
     const now = performance.now();
+    const levelChanged = semanticLevel !== previousLevel.current;
+    const origin = navigationOrigin.current?.level === semanticLevel ? navigationOrigin.current : levelChanged && semanticLevel ? (activeGroup ? cur.current.get(`group:${activeGroup.id}`) : undefined) ?? { x: 0, y: 0 } : null;
+    previousLevel.current = semanticLevel;
+    navigationOrigin.current = null;
     for (const [s, t] of Object.entries(T)) {
       if (cur.current.has(s)) continue;
-      const from = !first.current && parentOf(s) ? cur.current.get(parentOf(s)!) : undefined;
+      const from = !first.current && origin ? origin : !first.current && parentOf(s) ? cur.current.get(parentOf(s)!) : undefined;
       cur.current.set(s, from ? { ...from } : { x: t.x, y: t.y });
       if (!first.current && p.celebrate !== false) fresh.current.set(s, now + 900);
     }
@@ -108,7 +138,7 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, reduced]);
+  }, [layout, reduced, semanticLevel]);
 
   /* ---------- Unlock moments ---------- */
   const prevState = useRef(new Map<string, LState>());
@@ -119,7 +149,7 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
       const before = prevState.current.get(n.slug);
       // Only learning earns a burst (not a ghost turning into a new topic).
       if (before && before !== "suggested" && p.celebrate !== false && RANK[n.state] > RANK[before] && n.state !== "seeded" && n.state !== "suggested") {
-        ups.push({ slug: n.slug, text: n.state === "understood" ? "Understood" : "Lit up", id: Math.random() });
+        ups.push({ slug: n.slug, text: n.state === "understood" ? "Explained" : "Exploring", id: Math.random() });
       }
       prevState.current.set(n.slug, n.state);
     }
@@ -135,6 +165,10 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
   const userMoved = useRef(0);
   const camRef = useRef(cam);
   camRef.current = cam;
+  const fittedZoom = useRef(1);
+  const previousViewportWidth = useRef(0);
+  const semanticExitPending = useRef(false);
+  const lastSemanticExit = useRef(0);
 
   useEffect(() => {
     const el = wrap.current!;
@@ -149,17 +183,29 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
 
   const fit = useCallback((animate = true) => {
     if (!size.w) return;
-    // Phones fit to what you've explored; the fogged edge is a pan away.
+    // Include new topics on every screen so a fresh question is visible before learning.
     const phone = size.w < 640;
-    const ps = Object.entries(layout.pos).filter(([s]) => !phone || ["understood", "explored"].includes(info.get(s)?.state ?? "")).map(([, b]) => b);
+    const ps = Object.values(layout.pos);
     let x0 = -YOU.w / 2, x1 = YOU.w / 2, y0 = -YOU.h / 2, y1 = YOU.h / 2;
     for (const b of ps) { x0 = Math.min(x0, b.x - b.w / 2); x1 = Math.max(x1, b.x + b.w / 2); y0 = Math.min(y0, b.y - b.h / 2); y1 = Math.max(y1, b.y + b.h / 2); }
-    const padX = phone ? 12 : 40, padTop = 56, padBottom = 72;
-    const z = Math.max(phone ? 0.6 : 0.74, Math.min(1.2, (size.w - padX * 2) / (x1 - x0), (size.h - padTop - padBottom) / (y1 - y0)));
+    const padX = phone ? 12 : 40, padTop = p.topInset ?? 56, padBottom = 72;
+    const z = Math.max(ZMIN, Math.min(1.2, (size.w - padX * 2) / (x1 - x0), (size.h - padTop - padBottom) / (y1 - y0)));
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     setCamAnim(animate && !reduced);
     setCam({ x: -cx * z, y: -cy * z + (padTop - padBottom) / 2, z });
-  }, [size.w, size.h, layout, info, reduced]);
+    fittedZoom.current = z;
+  }, [size.w, size.h, layout, reduced, p.topInset]);
+
+  useEffect(() => {
+    const previous = previousViewportWidth.current;
+    if (!p.overview) { previousViewportWidth.current = size.w; return; }
+    if (!size.w || Math.abs(previous - size.w) < 24) return;
+    previousViewportWidth.current = size.w;
+    // Resizing to a phone-sized canvas must not retain a recently dragged desktop
+    // camera. Ordinary concept layout and question-view camera rules stay intact.
+    userMoved.current = 0;
+    fit(previous > 0);
+  }, [size.w, p.overview, fit]);
 
   const count = Object.keys(layout.pos).length;
   useEffect(() => {
@@ -174,17 +220,57 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
     fit(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.fitKey]);
+  useEffect(() => {
+    semanticExitPending.current = false;
+    if (!semanticLevel) return;
+    userMoved.current = 0;
+    fit(!first.current);
+    // A level change always refits, even if it contains the same number of nodes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [semanticLevel]);
+
+  const enterGroup = (id: string) => {
+    const position = cur.current.get(`group:${id}`);
+    if (!position || !p.overview || navigationTimer.current) return;
+    navigationOrigin.current = { level: `group:${id}`, ...position };
+    if (reduced) { p.overview.onEnter(id); return; }
+    // Move into the selected topic before its constituent concepts unfold.
+    const z = Math.min(ZMAX, Math.max(camRef.current.z, 1.15));
+    setCamAnim(true);
+    setCam({ x: -position.x * z, y: -position.y * z, z });
+    const sourceOverview = p.overview;
+    navigationTimer.current = setTimeout(() => {
+      navigationTimer.current = null;
+      if (latest.current.overview && latest.current.overview.activeGroupId === sourceOverview.activeGroupId) latest.current.overview.onEnter(id);
+    }, 180);
+  };
+
+  const exitGroup = useCallback(() => {
+    if (!latest.current.overview?.activeGroupId || semanticExitPending.current) return;
+    semanticExitPending.current = true;
+    lastSemanticExit.current = performance.now();
+    pinch.current = null;
+    drag.current = null;
+    latest.current.onSelect(null);
+    latest.current.overview.onExit();
+  }, []);
 
   const zoomAt = useCallback((f: number, sx?: number, sy?: number) => {
+    // Let an exiting wheel/pinch gesture settle at the new abstraction level.
+    if (latest.current.overview && lastSemanticExit.current > 0 && performance.now() - lastSemanticExit.current < 300) return;
     const c = camRef.current;
     const w = size.w, h = size.h;
     const px = (sx ?? w / 2) - w / 2, py = (sy ?? h / 2) - h / 2;
+    if (latest.current.overview?.activeGroupId && f < 1 && c.z * f < fittedZoom.current * .62) {
+      exitGroup();
+      return;
+    }
     const nz = Math.max(ZMIN, Math.min(ZMAX, c.z * f));
     const wx = (px - c.x) / c.z, wy = (py - c.y) / c.z;
     setCamAnim(sx === undefined && !reduced);
     setCam({ x: px - wx * nz, y: py - wy * nz, z: nz });
     userMoved.current = performance.now();
-  }, [size.w, size.h, reduced]);
+  }, [size.w, size.h, reduced, exitGroup]);
 
   // Wheel zoom (non-passive so the page doesn't scroll).
   useEffect(() => {
@@ -287,6 +373,10 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
 
   const flow = !reduced;
   const now = performance.now();
+  const focusTitle = activeGroup?.title ?? p.focus?.title.trim();
+  const topicCount = activeGroup ? `${activeGroup.conceptSlugs.length} concept${activeGroup.conceptSlugs.length === 1 ? "" : "s"}` : p.focus ? `${p.focus.topicCount} concept${p.focus.topicCount === 1 ? "" : "s"}` : null;
+  const centerTitle = activeGroup ? activeGroup.title : p.focus ? (focusTitle && focusTitle.length <= 30 ? focusTitle : topicCount) : p.you.name;
+  const scopedCenter = Boolean(activeGroup || p.focus);
 
   return (
     <div
@@ -390,22 +480,42 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
             );
           })}
 
+          {/* Each summary connection is backed by one or more actual concept relationships. */}
+          {summaryLinks.map(link => {
+            const a = P(`group:${link.src}`), b = P(`group:${link.dst}`);
+            if (!a || !b) return null;
+            const start = exitPoint(a, b.x, b.y), end = exitPoint(b, a.x, a.y);
+            const mx = (start.x + end.x) / 2, my = (start.y + end.y) / 2;
+            const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy) || 1;
+            let nx = -dy / length, ny = dx / length;
+            if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; }
+            const bend = Math.min(90, length * .2);
+            return <g key={`${link.src}:${link.dst}`}><path d={`M${start.x},${start.y} Q${mx + nx * bend},${my + ny * bend} ${end.x},${end.y}`} fill="none" stroke="#65656f" strokeWidth="1.4" strokeDasharray="3 5" /><title>{link.count} saved concept {link.count === 1 ? "relationship" : "relationships"}</title></g>;
+          })}
+
           {/* Fog: dark everywhere except around what you've explored */}
-          <rect x="-6000" y="-6000" width="12000" height="12000" fill="#08080a" fillOpacity=".8" mask="url(#km-fog)" />
+          {!inOverview && <rect x="-6000" y="-6000" width="12000" height="12000" fill="#08080a" fillOpacity=".8" mask="url(#km-fog)" />}
         </svg>
 
-        {/* You */}
+        {/* Current question, or you in the full-map overview. */}
         <div className="kpos" style={{ transform: `translate(${-YOU.w / 2}px, ${-YOU.h / 2}px)` }}>
-          <button data-card className="kyou" onClick={() => { userMoved.current = 0; fit(true); }} aria-label={`You, level ${p.you.level}. Fit the map to your topics`} title="Fit the map to your topics">
+          <button data-card className="kyou" onClick={() => { if (activeGroup) exitGroup(); else { userMoved.current = 0; fit(true); } }} aria-label={activeGroup ? `${activeGroup.title}. ${topicCount}. Back one level` : `${p.focus ? `This question: ${p.focus.title}. ${topicCount}` : p.you.name}. Fit the map to your topics`} title={activeGroup ? `${activeGroup.title} · Back one level` : p.focus?.title ?? "Fit the map to your topics"}>
             <svg viewBox="0 0 116 116" className="absolute inset-0 -rotate-90" aria-hidden>
-              <circle cx="58" cy="58" r="54" fill="none" stroke="#202026" strokeWidth="3" />
-              <circle cx="58" cy="58" r="54" fill="none" stroke="var(--color-mastery)" strokeWidth="3" strokeLinecap="round" strokeDasharray={2 * Math.PI * 54} strokeDashoffset={2 * Math.PI * 54 * (1 - Math.max(0.02, p.you.frac))} />
+              <circle cx="58" cy="58" r="54" fill="none" stroke="#35353e" strokeWidth="2" />
             </svg>
-            <span className="text-xs text-muted">You</span>
-            <span className="display max-w-[96px] truncate text-lg leading-tight">{p.you.name}</span>
-            <span className="mt-0.5 text-2xs text-mastery">Level {p.you.level}</span>
+            <span className="text-xs text-muted">{activeGroup ? activeGroup.anchorSlug ? "Concept" : "Topic" : p.focus ? "This question" : "You"}</span>
+            <span className={`display max-w-[96px] break-words leading-tight ${scopedCenter ? "mt-1 line-clamp-2 text-sm" : "truncate text-lg"}`}>{centerTitle}</span>
+            {(!p.focus || centerTitle !== topicCount) && <span className="mt-1 text-2xs text-muted">{inOverview ? `${groups.length} ${activeGroup ? "subtopics" : "topics"}` : scopedCenter ? topicCount : "All topics"}</span>}
           </button>
         </div>
+
+        {/* Topic containers are a distinct abstraction, not scored concept cards. */}
+        {inOverview && groups.map(group => {
+          const id = `group:${group.id}`, b = P(id);
+          if (!b) return null;
+          const connected = summaryLinks.filter(link => link.src === group.id || link.dst === group.id).length;
+          return <div key={id} className="kpos" style={{ transform: `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px)`, width: b.w, height: b.h }}><button data-card className="kcard border-line-2 bg-panel shadow-[0_6px_24px_-10px_rgba(0,0,0,.8)]" style={{ padding: "12px 14px" }} ref={element => { if (element) btns.current.set(id, element); else btns.current.delete(id); }} onClick={() => enterGroup(group.id)} onKeyDown={onKey(id)} onFocus={() => reveal(id)} aria-label={`${group.title}, ${group.conceptSlugs.length} concepts${connected ? `, connected to ${connected} other topics` : ""}. Expand topic`} title={group.summary}><span className="flex items-start gap-2.5"><svg className="mt-0.5 shrink-0 text-accent" width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden><rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="12" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="7" y="12" width="6" height="6" rx="1.5" stroke="currentColor" /><path d="M5 8v2h10V8M10 10v2" stroke="currentColor" /></svg><span className="min-w-0 flex-1 line-clamp-2 text-base font-medium leading-snug">{group.title}</span><span className="text-muted" aria-hidden>↗</span></span><span className="mt-1 pl-[28px] text-xs text-muted">{group.conceptSlugs.length} {group.conceptSlugs.length === 1 ? "concept" : "concepts"} · {group.children?.length ? `${group.children.length} subtopics` : "Explore"}</span></button></div>;
+        })}
 
         {/* Topics */}
         {lnodes.map((n) => {
@@ -413,21 +523,19 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
           if (!b) return null;
           const title = titles.get(n.slug) ?? n.slug;
           const sel = p.selected === n.slug;
-          const fading = n.state !== "understood" && n.state !== "suggested" && n.interest < 0.3;
-          const opacity = n.state === "understood" ? 1 : n.state === "suggested" ? 0.92 : fading ? 0.6 : Math.max(0.82, opacityFor(n.interest));
-          const sugg = n.state === "suggested" ? p.suggestions.find((s) => s.slug === n.slug) : undefined;
-          const label = sugg ? `${title}, suggested. ${sugg.reason}` : `${title}, ${STATE_LABEL[n.state as keyof typeof STATE_LABEL]}${fading ? ", fading" : ""}`;
+          const opacity = n.state === "understood" ? 1 : n.state === "suggested" ? 0.88 : 0.96;
+          const sugg = n.state === "suggested" ? suggestions.find((s) => s.slug === n.slug) : undefined;
+          const label = sugg ? `${title}, suggested. ${sugg.reason}` : `${title}, ${STATE_LABEL[n.state as keyof typeof STATE_LABEL]}`;
           const peers = peersOn.get(n.slug) ?? [];
           const pop = (fresh.current.get(n.slug) ?? 0) > now;
           const burst = bursts.filter((x) => x.slug === n.slug);
-          const lvl = Math.min(10, Math.floor(n.mastery * 10));
           return (
             <div key={n.slug} className={`kpos ${sel ? "is-selected" : ""}`} style={{ transform: `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px)`, width: b.w, height: b.h }}>
               <div className={`h-full ${pop ? "kpop" : ""}`}>
                 <button
                   data-card
                   ref={(el) => { if (el) btns.current.set(n.slug, el); else btns.current.delete(n.slug); }}
-                  className={`kcard kcard-${n.state} ${fading ? "kcard-fading" : ""} ${sel ? "is-selected" : ""}`}
+                  className={`kcard kcard-${n.state} ${sel ? "is-selected" : ""}`}
                   style={{ opacity }}
                   onClick={() => p.onSelect(n.slug)}
                   onKeyDown={onKey(n.slug)}
@@ -439,9 +547,7 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
                   <span className="flex min-w-0 items-center gap-2">
                     <NodeIcon state={n.state} mastery={n.mastery} size={n.state === "understood" ? 16 : 14} />
                     <span className={`min-w-0 flex-1 truncate ${n.state === "understood" ? "text-lg font-semibold" : n.state === "explored" ? "text-md font-medium" : "text-base"}`}>{title}</span>
-                    {n.state === "understood" && <span className="shrink-0 font-mono text-2xs text-mastery">Lv {lvl}</span>}
                   </span>
-                  {n.state === "explored" && <span className="kbar" aria-hidden><i style={{ width: `${Math.max(6, (n.mastery / 0.7) * 100)}%` }} /></span>}
                   {n.state === "suggested" && <span className="text-2xs text-dim">Suggested next</span>}
                 </button>
                 {peers.length > 0 && (
@@ -466,8 +572,9 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
         <button className="map-btn" onClick={() => zoomAt(1.25)} aria-label="Zoom in" title="Zoom in">+</button>
         <button className="map-btn border-t border-line" onClick={() => zoomAt(0.8)} aria-label="Zoom out" title="Zoom out">−</button>
         <button className="map-btn border-t border-line font-mono text-2xs" onClick={() => { userMoved.current = 0; fit(true); }} aria-label="Fit map to your topics" title="Fit map to your topics">FIT</button>
+        {activeGroup && <button className="map-btn border-t border-line text-sm" onClick={exitGroup} aria-label="Back one level" title="Back one level">↑</button>}
       </div>
-      <p className="sr-only">Your knowledge map. Tab or use arrow keys to move between topics, Enter to open one, Escape to close it.</p>
+      <p className="sr-only" role="status">{inOverview ? `${activeGroup?.title ?? "Knowledge overview"}. ${groups.length} topics. Choose a topic to reveal its subtopics and concepts.` : activeGroup ? `${activeGroup.title}. ${lnodes.length} concepts. Zoom out or choose Back one level to return.` : "Your knowledge map."} Tab or use arrow keys to move between nodes, Enter to open one, Escape to close details.</p>
     </div>
   );
 }

@@ -2,15 +2,19 @@
 import type { NodeState } from "../types";
 
 export const STATE_LABEL: Record<NodeState, string> = {
-  seeded: "On your map",
-  explored: "Explored",
-  understood: "Understood",
+  seeded: "Not started",
+  explored: "Exploring",
+  understood: "Explained",
 };
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Peer names in history may carry a fixture marker, e.g. "Rhea (seed)". Learners see the name only. */
-export const personName = (s: string) => s.replace(/\s*\((seed|demo)\)\s*$/i, "");
+export function personName(s: string, names: Readonly<Record<string, string>> = {}): string {
+  const name = names[s] ?? s;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return "a peer";
+  return name.replace(/\s*\((seed|demo)\)\s*$/i, "") || "a peer";
+}
 
 export function relTime(at: number, now = Date.now()) {
   const s = Math.max(0, Math.round((now - at) / 1000));

@@ -44,8 +44,27 @@ export const MetadataOutput = z.object({
 });
 export const KnowledgeMapInput = z.object({
   text: long,
-  objective: z.enum(["expand", "recommend", "plan"]).default("expand"),
+  objective: z.enum(["expand", "recommend", "plan", "summarize"]).default("expand"),
 });
+export const KnowledgeOverviewGroupSchema = z.object({
+  id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80),
+  title: z.string().trim().min(1).max(80),
+  summary: z.string().trim().min(1).max(360),
+  conceptSlugs: z.array(z.string().min(1).max(80)).min(1).max(200),
+});
+export const KnowledgeOverviewSourceSchema = z.object({
+  concepts: z.array(z.object({ slug: z.string().min(1).max(80), title: z.string().min(1), hook: z.string() })).max(200),
+  edges: z.array(z.object({ src: z.string().min(1).max(80), dst: z.string().min(1).max(80), kind: z.enum(["prerequisite", "related", "part_of"]) })).max(800),
+});
+/** Coverage is an exact partition of owner-authorized concepts, never a sampled map. */
+export function validateKnowledgeOverviewGroups(groups: z.infer<typeof KnowledgeOverviewGroupSchema>[], conceptSlugs: string[]) {
+  if (!groups.length || groups.length > 12) throw new AgentError("INVALID_OUTPUT", "Return one to twelve topic groups for this non-empty map.");
+  if (new Set(groups.map(group => group.id)).size !== groups.length) throw new AgentError("INVALID_OUTPUT", "Topic groups must have unique IDs.");
+  const expected = new Set(conceptSlugs), assigned = groups.flatMap(group => group.conceptSlugs);
+  if (expected.size !== conceptSlugs.length || assigned.length !== expected.size || new Set(assigned).size !== assigned.length || assigned.some(slug => !expected.has(slug))) {
+    throw new AgentError("INVALID_OUTPUT", "Include every saved concept exactly once across the topic groups. Do not omit, duplicate or invent concept IDs.");
+  }
+}
 export const KnowledgeMapOutput = z.object({
   intent: short,
   root: z.string().min(1).max(80),
@@ -54,6 +73,7 @@ export const KnowledgeMapOutput = z.object({
   explanation: z.string().min(1).max(1800),
   recommendedPeerIds: z.array(z.string().max(100)).max(10).default([]),
   nextActions: z.array(z.string().max(200)).max(6).default([]),
+  groups: z.array(KnowledgeOverviewGroupSchema).max(12).default([]),
 });
 export const PeerGuideInput = z.object({ query: z.string().max(1500).default(""), limit: z.number().int().min(1).max(10).default(5) });
 export const PeerGuideOutput = z.object({ peers: z.array(PeerSchema).max(10), status: z.enum(["matches", "none"]), explanation: z.string().max(1000) });

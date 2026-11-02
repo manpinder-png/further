@@ -121,11 +121,11 @@ export default function MatchModal() {
         </div>
         <div className="mx-4 mb-4 grid grid-cols-2 border border-line">
           <div className="border-r border-line p-3">
-            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted"><Head color="#f26b1d" size={14} /> You teach</div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted"><Head color="#f26b1d" size={14} /> Your starting point</div>
             <div className="text-sm">{title(match.youStrong)}</div>
           </div>
           <div className="p-3">
-            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted"><Head color={match.peer.color} size={14} /> {match.peer.name} teaches</div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted"><Head color={match.peer.color} size={14} /> {match.peer.name}’s starting point</div>
             <div className="text-sm">{title(match.peerStrong)}</div>
           </div>
         </div>

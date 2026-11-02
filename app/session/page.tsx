@@ -16,19 +16,20 @@ export default function SessionPage() {
 }
 
 function Session() {
-  const { match, profile, ready, currentSessionId, dataMode } = useStore();
+  const { match, profile, ready, currentSessionId, dataMode, auth, authReady } = useStore();
   const params = useSearchParams();
   const id = params.get("s") ?? match?.sessionId ?? currentSessionId;
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!ready || !id || dataMode !== "local") return;
+    if (!ready || !id || dataMode !== "local" || (!auth?.authenticated && !auth?.localProfilesEnabled)) return;
     let alive = true;
     setRoom(null); setError(null);
     getRoom(id).then((snapshot) => { if (alive) setRoom(snapshot); }).catch((e: Error) => { if (alive) setError(e.message); });
     return () => { alive = false; };
-  }, [id, ready, dataMode, attempt]);
+  }, [id, ready, dataMode, attempt, auth]);
+  if (authReady && !auth?.authenticated && !auth?.localProfilesEnabled) return <section className="mx-auto max-w-md p-8"><h1 className="text-2xl font-semibold">Sign in to your conversation</h1><p className="mt-3 text-muted">Your conversations are private to their participants.</p><Link href="/login" className="btn btn-primary mt-5">Sign in</Link></section>;
   if (!ready) return <div className="p-6"><OperationStatus label="Loading your learning profile" detail="Checking your browser identity and reading saved local data." /></div>;
   if (id && dataMode === "local" && !error && !room) return <div className="p-6"><OperationStatus label="Opening the shared conversation" detail="Checking room membership and restoring saved messages. This is a database read." /></div>;
   if (room) return <Room key={room.id} initial={room} you={profile.displayName} />;
@@ -182,7 +183,7 @@ function Room({ initial, you }: { initial: RoomSnapshot; you: string }) {
             {blocking && <OperationStatus label="Saving your safety choice" detail="Waiting for local confirmation. Reports remain on this Mac for review." />}
           </div>
           {error && <p className="border-t border-err/40 bg-panel px-4 py-2 text-sm text-err" role="alert">{error}</p>}
-          {ended || blocked ? <div className="border-t border-line bg-panel p-4"><h2 className="font-semibold">{blocked ? "This interaction is blocked." : "Your session is saved."}</h2><p className="mt-1 text-sm text-muted">{blocked ? "You won't receive further messages from this person." : "Your learning history now includes this conversation."}</p>{room.summary && <ul className="mt-2 space-y-1 text-sm text-muted">{room.summary.map((line) => <li key={line}>{line}</li>)}</ul>}<button className="btn btn-primary mt-3" onClick={() => { dispatch({ t: "match", m: null }); router.push("/"); }}>Return to your map</button></div> : <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}><input className="field h-11 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder="Share your idea or ask a question…" maxLength={1000} disabled={sending} aria-label="Message" /><button className="btn btn-primary h-11 shrink-0" disabled={sending || !text.trim()}>Send</button></form>}
+          {ended || blocked ? <div className="border-t border-line bg-panel p-4"><h2 className="font-semibold">{blocked ? "This interaction is blocked." : "Your session is saved."}</h2><p className="mt-1 text-sm text-muted">{blocked ? "You won't receive further messages from this person." : "Your learning history now includes this conversation."}</p>{room.summary && <ul className="mt-2 space-y-1 text-sm text-muted">{room.summary.map((line) => <li key={line}>{line}</li>)}</ul>}<button className="btn btn-primary mt-3" onClick={() => { dispatch({ t: "match", m: null }); router.push("/"); }}>Return to learning</button></div> : <form className="flex shrink-0 gap-2 border-t border-line bg-panel p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}><input className="field h-11 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder="Share your idea or ask a question…" maxLength={1000} disabled={sending} aria-label="Message" /><button className="btn btn-primary h-11 shrink-0" disabled={sending || !text.trim()}>Send</button></form>}
         </div>
       </section>
       <aside className="hidden min-h-0 flex-col border-l border-line bg-panel xl:flex"><header className="border-b border-line px-4 py-3"><h2 className="label">Your choices</h2></header>{safety}</aside>

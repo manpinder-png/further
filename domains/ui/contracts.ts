@@ -51,6 +51,7 @@ export interface LocalIdentity {
   mode: "local";
 }
 export interface MapSnapshot {
+  peerNames?: Record<string, string>;
   actorId?: string;
   mode?: "local";
   modelMode?: "live" | "fixture";
@@ -62,6 +63,7 @@ export interface MapSnapshot {
   match?: MatchRequest | null;
   currentSessionId?: string | null;
   missions?: Mission[];
+  sessions?: Array<{ id: string; conceptSlug: string; participants: string[]; createdAt: number; endedAt?: number; summary: string[] }>;
 }
 export interface RoomMessage {
   id: number | string;

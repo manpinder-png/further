@@ -1,0 +1,820 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Further development data and identity: private Aurora PostgreSQL serverless with Data API, Cognito Lite, and private media. APIs and Meta agents stay local.",
+  "Metadata": {
+    "Purpose": "Development environment. Capacity cap is a spending guardrail, not a measured sizing recommendation.",
+    "Connection": "Local backend uses temporary AWS credentials and Data API. No database ingress, NAT gateway, public database endpoint or application hosting is created."
+  },
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "dev",
+      "AllowedValues": [
+        "dev"
+      ],
+      "Description": "Isolated Further development environment."
+    },
+    "DatabaseName": {
+      "Type": "String",
+      "Default": "further",
+      "AllowedPattern": "[a-z][a-z0-9]{0,62}",
+      "Description": "Initial PostgreSQL application database."
+    },
+    "DatabaseEngineVersion": {
+      "Type": "String",
+      "Default": "17.9",
+      "AllowedPattern": "[0-9]+\\.[0-9]+",
+      "Description": "Verified Aurora PostgreSQL version supporting Data API and zero-ACU pause."
+    },
+    "MaxDatabaseCapacity": {
+      "Type": "Number",
+      "Default": 2,
+      "MinValue": 1,
+      "MaxValue": 32,
+      "Description": "Bounded development ceiling in ACUs, not a workload capacity forecast."
+    },
+    "FacebookAppId": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^[0-9]+$",
+      "Description": "Optional Facebook Login app ID. Leave blank until app setup is complete."
+    },
+    "FacebookApiVersion": {
+      "Type": "String",
+      "Default": "v21.0",
+      "AllowedPattern": "^v[1-9][0-9]*\\.[0-9]+$",
+      "Description": "Explicit federation version; v21.0 was the highest offered by Cognito us-east-1 on November 2, 2026. Recheck Cognito support and Meta lifecycle before upgrading."
+    },
+    "FacebookSecretArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$",
+      "Description": "Optional same-region Secrets Manager ARN holding JSON key app_secret. No secret value in parameters."
+    }
+  },
+  "Conditions": {
+    "HasFacebook": {
+      "Fn::And": [
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "FacebookAppId"
+                },
+                ""
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "FacebookSecretArn"
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.88.0.0/24",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      }
+    },
+    "PrivateSubnetA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.88.0.0/26",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      }
+    },
+    "PrivateSubnetB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.88.0.64/26",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Further private database. No inbound PostgreSQL; application uses authenticated Data API.",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "-1",
+            "CidrIp": "10.88.0.0/24",
+            "Description": "Private VPC traffic only; no internet route is provisioned."
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      }
+    },
+    "DatabaseSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Further private Aurora subnets in two availability zones.",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateSubnetA"
+          },
+          {
+            "Ref": "PrivateSubnetB"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      }
+    },
+    "DatabaseCluster": {
+      "Type": "AWS::RDS::DBCluster",
+      "Properties": {
+        "Engine": "aurora-postgresql",
+        "EngineMode": "provisioned",
+        "EngineVersion": {
+          "Ref": "DatabaseEngineVersion"
+        },
+        "DatabaseName": {
+          "Ref": "DatabaseName"
+        },
+        "MasterUsername": "further_admin",
+        "ManageMasterUserPassword": true,
+        "StorageEncrypted": true,
+        "BackupRetentionPeriod": 7,
+        "CopyTagsToSnapshot": true,
+        "DeletionProtection": true,
+        "EnableHttpEndpoint": true,
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnetGroup"
+        },
+        "VpcSecurityGroupIds": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ],
+        "Port": 5432,
+        "ServerlessV2ScalingConfiguration": {
+          "MinCapacity": 0,
+          "MaxCapacity": {
+            "Ref": "MaxDatabaseCapacity"
+          },
+          "SecondsUntilAutoPause": 300
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "DatabaseWriter": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBClusterIdentifier": {
+          "Ref": "DatabaseCluster"
+        },
+        "Engine": "aurora-postgresql",
+        "DBInstanceClass": "db.serverless",
+        "PubliclyAccessible": false,
+        "AutoMinorVersionUpgrade": true,
+        "MonitoringInterval": 0,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "UserPool": {
+      "Type": "AWS::Cognito::UserPool",
+      "Properties": {
+        "UserPoolName": {
+          "Fn::Sub": "${AWS::StackName}-users"
+        },
+        "UserPoolTier": "LITE",
+        "DeletionProtection": "ACTIVE",
+        "UsernameAttributes": [
+          "email"
+        ],
+        "UsernameConfiguration": {
+          "CaseSensitive": false
+        },
+        "AutoVerifiedAttributes": [
+          "email"
+        ],
+        "AdminCreateUserConfig": {
+          "AllowAdminCreateUserOnly": false
+        },
+        "AccountRecoverySetting": {
+          "RecoveryMechanisms": [
+            {
+              "Name": "verified_email",
+              "Priority": 1
+            }
+          ]
+        },
+        "UserAttributeUpdateSettings": {
+          "AttributesRequireVerificationBeforeUpdate": [
+            "email"
+          ]
+        },
+        "MfaConfiguration": "OFF",
+        "Policies": {
+          "PasswordPolicy": {
+            "MinimumLength": 12,
+            "RequireLowercase": true,
+            "RequireUppercase": true,
+            "RequireNumbers": true,
+            "RequireSymbols": false,
+            "TemporaryPasswordValidityDays": 7
+          }
+        },
+        "EmailConfiguration": {
+          "EmailSendingAccount": "COGNITO_DEFAULT"
+        },
+        "VerificationMessageTemplate": {
+          "DefaultEmailOption": "CONFIRM_WITH_CODE"
+        },
+        "Schema": [
+          {
+            "Name": "email",
+            "AttributeDataType": "String",
+            "Mutable": true,
+            "Required": true
+          },
+          {
+            "Name": "name",
+            "AttributeDataType": "String",
+            "Mutable": true,
+            "Required": true
+          },
+          {
+            "Name": "preferred_username",
+            "AttributeDataType": "String",
+            "Mutable": true,
+            "Required": false
+          }
+        ],
+        "UserPoolTags": {
+          "Project": "Further",
+          "Environment": {
+            "Ref": "Environment"
+          },
+          "ManagedBy": "CloudFormation"
+        }
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "FacebookIdentityProvider": {
+      "Type": "AWS::Cognito::UserPoolIdentityProvider",
+      "Properties": {
+        "UserPoolId": {
+          "Ref": "UserPool"
+        },
+        "ProviderName": "Facebook",
+        "ProviderType": "Facebook",
+        "ProviderDetails": {
+          "client_id": {
+            "Ref": "FacebookAppId"
+          },
+          "client_secret": {
+            "Fn::Sub": "{{resolve:secretsmanager:${FacebookSecretArn}:SecretString:app_secret}}"
+          },
+          "authorize_scopes": "public_profile,email",
+          "api_version": {
+            "Ref": "FacebookApiVersion"
+          }
+        },
+        "AttributeMapping": {
+          "email": "email",
+          "name": "name"
+        }
+      },
+      "Condition": "HasFacebook"
+    },
+    "UserPoolClient": {
+      "Type": "AWS::Cognito::UserPoolClient",
+      "Properties": {
+        "ClientName": {
+          "Fn::Sub": "${AWS::StackName}-local-ui"
+        },
+        "UserPoolId": {
+          "Ref": "UserPool"
+        },
+        "GenerateSecret": false,
+        "PreventUserExistenceErrors": "ENABLED",
+        "EnableTokenRevocation": true,
+        "ExplicitAuthFlows": [
+          "ALLOW_USER_PASSWORD_AUTH",
+          "ALLOW_REFRESH_TOKEN_AUTH"
+        ],
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "AllowedOAuthFlows": [
+          "code"
+        ],
+        "AllowedOAuthScopes": [
+          "openid",
+          "email",
+          "profile"
+        ],
+        "SupportedIdentityProviders": {
+          "Fn::If": [
+            "HasFacebook",
+            [
+              "COGNITO",
+              {
+                "Ref": "FacebookIdentityProvider"
+              }
+            ],
+            [
+              "COGNITO"
+            ]
+          ]
+        },
+        "CallbackURLs": [
+          "http://localhost:3000/api/auth/cognito/callback",
+          "http://127.0.0.1:3000/api/auth/cognito/callback"
+        ],
+        "DefaultRedirectURI": "http://localhost:3000/api/auth/cognito/callback",
+        "LogoutURLs": [
+          "http://localhost:3000/",
+          "http://127.0.0.1:3000/",
+          "http://localhost:3000/login",
+          "http://127.0.0.1:3000/login"
+        ],
+        "ReadAttributes": [
+          "email",
+          "email_verified",
+          "name",
+          "preferred_username"
+        ],
+        "WriteAttributes": [
+          "email",
+          "name",
+          "preferred_username"
+        ],
+        "RefreshTokenValidity": 7,
+        "AccessTokenValidity": 60,
+        "IdTokenValidity": 60,
+        "TokenValidityUnits": {
+          "AccessToken": "minutes",
+          "IdToken": "minutes",
+          "RefreshToken": "days"
+        }
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "UserPoolDomain": {
+      "Type": "AWS::Cognito::UserPoolDomain",
+      "Properties": {
+        "Domain": {
+          "Fn::Sub": "${AWS::StackName}-${AWS::AccountId}"
+        },
+        "UserPoolId": {
+          "Ref": "UserPool"
+        },
+        "ManagedLoginVersion": 1
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "MediaBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "Further"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          },
+          {
+            "Key": "ManagedBy",
+            "Value": "CloudFormation"
+          },
+          {
+            "Key": "created_by",
+            "Value": "aurora-skill"
+          },
+          {
+            "Key": "generation_model",
+            "Value": "unknown"
+          }
+        ]
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "MediaBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "MediaBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyInsecureTransport",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MediaBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${MediaBucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "LocalDeveloperPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "Description": "Further development backend access only. Unattached; does not grant access to any person automatically.",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "ApplicationDatabase",
+              "Effect": "Allow",
+              "Action": [
+                "rds-data:ExecuteStatement",
+                "rds-data:BatchExecuteStatement",
+                "rds-data:BeginTransaction",
+                "rds-data:CommitTransaction",
+                "rds-data:RollbackTransaction"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DatabaseCluster",
+                  "DBClusterArn"
+                ]
+              }
+            },
+            {
+              "Sid": "DatabaseCredentialReference",
+              "Effect": "Allow",
+              "Action": [
+                "secretsmanager:GetSecretValue"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DatabaseCluster",
+                  "MasterUserSecret.SecretArn"
+                ]
+              }
+            },
+            {
+              "Sid": "ListApplicationMedia",
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MediaBucket",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Sid": "ReadWriteApplicationMedia",
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject"
+              ],
+              "Resource": {
+                "Fn::Sub": "${MediaBucket.Arn}/*"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "AwsRegion": {
+      "Description": "Region for local SDK clients.",
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    },
+    "DatabaseClusterArn": {
+      "Description": "Aurora cluster ARN for Data API calls.",
+      "Value": {
+        "Fn::GetAtt": [
+          "DatabaseCluster",
+          "DBClusterArn"
+        ]
+      }
+    },
+    "DatabaseSecretArn": {
+      "Description": "RDS-managed secret ARN reference; no password output.",
+      "Value": {
+        "Fn::GetAtt": [
+          "DatabaseCluster",
+          "MasterUserSecret.SecretArn"
+        ]
+      }
+    },
+    "DatabaseName": {
+      "Description": "Application database for migrations and queries.",
+      "Value": {
+        "Ref": "DatabaseName"
+      }
+    },
+    "DatabaseClusterIdentifier": {
+      "Description": "Private Aurora cluster identifier for operational inspection.",
+      "Value": {
+        "Ref": "DatabaseCluster"
+      }
+    },
+    "UserPoolId": {
+      "Description": "Cognito user pool for manual and optional social sign-in.",
+      "Value": {
+        "Ref": "UserPool"
+      }
+    },
+    "UserPoolClientId": {
+      "Description": "Public app client; it has no client secret.",
+      "Value": {
+        "Ref": "UserPoolClient"
+      }
+    },
+    "CognitoDomain": {
+      "Description": "Cognito classic hosted login origin (Lite tier).",
+      "Value": {
+        "Fn::Sub": "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+      }
+    },
+    "CognitoIssuer": {
+      "Description": "Expected JWT issuer.",
+      "Value": {
+        "Fn::Sub": "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+      }
+    },
+    "MediaBucketName": {
+      "Description": "Private application media bucket.",
+      "Value": {
+        "Ref": "MediaBucket"
+      }
+    },
+    "LocalDeveloperPolicyArn": {
+      "Description": "Unattached least-privilege application access policy for a future developer role.",
+      "Value": {
+        "Ref": "LocalDeveloperPolicy"
+      }
+    },
+    "FacebookConfigured": {
+      "Description": "True only when the real Facebook app provider is included.",
+      "Value": {
+        "Fn::If": [
+          "HasFacebook",
+          "true",
+          "false"
+        ]
+      }
+    }
+  }
+}

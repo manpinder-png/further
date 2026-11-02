@@ -25,10 +25,16 @@ export class FixtureAgentModel implements AgentModel {
       if (!request.messages.some((m) => m.role === "tool")) return {
         ...response(null), text: "", toolCalls: [
           { id: "fixture_map", name: "get_map", arguments: "{}" },
-          { id: "fixture_metadata", name: "infer_metadata", arguments: JSON.stringify({ text }) },
+          ...(input.objective === "plan" || input.objective === "summarize" ? [] : [{ id: "fixture_metadata", name: "infer_metadata", arguments: JSON.stringify({ text }) }]),
           ...(input.objective === "recommend" ? [{ id: "fixture_peers", name: "find_peers", arguments: JSON.stringify({ query: text, limit: 5 }) }] : []),
         ],
       };
+      if (input.objective === "summarize") {
+        const source = request.messages.find(message => message.toolCallId === "fixture_map");
+        const map = JSON.parse(source?.content ?? "{}") as { concepts?: Array<{ slug: string; title: string }> };
+        const saved = map.concepts ?? [];
+        return response({ intent: "Your saved topics", root: saved[0]?.slug ?? "empty", rootTitle: saved[0]?.title ?? "Your saved topics", concepts: [], groups: saved.length ? [{ id: "saved-topics", title: "Saved topics · rehearsal", summary: "Offline rehearsal groups all supplied topics together. A real Meta model is needed to organize them by meaning.", conceptSlugs: saved.map(concept => concept.slug) }] : [], explanation: "Explicit offline rehearsal. No model organized these topics or inferred understanding.", recommendedPeerIds: [], nextActions: [] });
+      }
       const concepts = [
         { slug: slug(title), title, hook: "Start with the question you brought.", difficulty: 0.2 },
         { slug: slug(title + " foundations"), title: "Foundations", hook: "Identify the parts and what each one does.", difficulty: 0.3, edge: { from: slug(title), kind: "part_of" } },
@@ -36,7 +42,7 @@ export class FixtureAgentModel implements AgentModel {
       ];
       const peers = request.messages.find((m) => m.toolCallId === "fixture_peers");
       const ids = peers ? (JSON.parse(peers.content).peers ?? []).map((p: { id: string }) => p.id) : [];
-      return response({ intent: title, root: concepts[0].slug, rootTitle: title, concepts, explanation: "Offline fixture map for exercising the local data and agent boundaries. No model generated these topics.", recommendedPeerIds: ids, nextActions: ["Open a topic", "Try explaining one example"] });
+      return response({ intent: title, root: concepts[0].slug, rootTitle: title, concepts: input.objective === "plan" || input.objective === "recommend" ? [] : concepts, explanation: "Offline fixture for exercising the local data and agent boundaries. No model generated this advice.", recommendedPeerIds: ids, nextActions: ["Try explaining one example"] });
     }
     if (request.agentId === "learning-companion") {
       const mode = input.mode ?? "solo";

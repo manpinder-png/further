@@ -76,7 +76,7 @@ export function suggestNext(
       visual && video
         ? "You finish videos, and there's a good one on this."
         : anchor.state === "understood"
-          ? `You understood ${anchorTitle}. This builds on it.`
+          ? `You explained ${anchorTitle}. This builds on it.`
           : `Next to ${anchorTitle}, which you've been exploring.`;
     const score = anchor.mastery * 0.6 + liveInterest(anchor, now) * 0.4 + (visual && video ? 0.1 : 0);
     out.push({ slug, title: c.title, hook: c.hook, anchor: link.from, kind: link.kind, reason, score });
@@ -99,6 +99,7 @@ export function pathFor(
   nodes: Record<string, UserNode>,
   suggestions: Suggestion[],
   now = Date.now(),
+  events: FEvent[] = [],
 ): PathStep[] {
   const title = (s: string) => concepts[s]?.title ?? CATALOG[s]?.title ?? s;
   const list = Object.values(nodes).filter((n) => concepts[n.slug]);
@@ -106,7 +107,10 @@ export function pathFor(
   const finish: PathStep[] = list
     .filter((n) => n.state === "explored" && liveInterest(n, now) >= 0.35)
     .sort((a, b) => b.mastery - a.mastery)
-    .map((n) => ({ slug: n.slug, title: title(n.slug), kind: "finish" as const, reason: n.mastery >= 0.2 ? "Explain it back to finish" : "Watch the source to go deeper" }));
+    .map((n) => {
+      const explained = events.some((event) => event.slug === n.slug && event.kind === "explain");
+      return { slug: n.slug, title: title(n.slug), kind: "finish" as const, reason: explained ? "Try an example, then revisit your explanation" : "Explore an example and try explaining it" };
+    });
 
   const ready: PathStep[] = list
     .filter((n) => n.state === "seeded")
@@ -117,7 +121,7 @@ export function pathFor(
 
   const revisit: PathStep[] = list
     .filter((n) => n.state === "explored" && liveInterest(n, now) < 0.35)
-    .map((n) => ({ slug: n.slug, title: title(n.slug), kind: "revisit" as const, reason: "Fading. A quick look brings it back" }));
+    .map((n) => ({ slug: n.slug, title: title(n.slug), kind: "revisit" as const, reason: "You explored this earlier. Revisit when useful" }));
 
   const sugg: PathStep[] = suggestions.map((s) => ({ slug: s.slug, title: s.title, kind: "suggested" as const, reason: s.reason }));
 

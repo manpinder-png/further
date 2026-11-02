@@ -1,10 +1,56 @@
-// Real-time match scoring (plan §5.5). Pure: the 15s server job (Amit) calls
-// scorePair for each present pair; the UI uses the same breakdown to explain a match.
+// Live matching uses versioned semantic retrieval and the pure fit policy below.
+// scorePair is retained for explicit legacy sample-mode compatibility.
 import type { Edge, Explorer } from "./types";
+import { EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_REFERENCE_HASH } from "../domains/retrieval/space";
 
 export const MATCH_THRESHOLD = 0.6;
 export const HANDSHAKE_MS = 60_000;
 const TEN_MIN = 10 * 60_000;
+
+/**
+ * Experimental operating point for the pinned, fixed-reference-centered space.
+ * The 18-query smoke sets retain 15 labelled targets at this threshold; it is
+ * deliberately more conservative than keeping all nearest-neighbor results.
+ * This is a retrieval threshold, never a probability or knowledge assessment.
+ * Re-evaluate this operating point when the encoder/revision changes.
+ */
+export const SEMANTIC_MIN_SIMILARITY = 0.55;
+export const SEMANTIC_MATCHING_VERSION = "semantic-cosine-v1" as const;
+/** Experimental, deterministic disclosure policy; never fitted to demo names. */
+export const SEMANTIC_PAIR_BAND = 0.10;
+export const SEMANTIC_PAIR_LIMIT = 3;
+
+/** An operating point never transfers silently to a different encoder space. */
+export function semanticOperatingPoint(model: string, revision: string): { minSimilarity: number; calibration: "experimental" } | null {
+  // Freeze the evaluated transform, not merely the encoder's moving name. New
+  // reference material or pooling needs an explicit evaluation/policy change.
+  if (model === EMBEDDING_MODEL && revision === EMBEDDING_REVISION
+    && revision.includes(":mean-mask-l2-refmean-l2-v2:")
+    && EMBEDDING_REFERENCE_HASH === "ec1cadc28166e6bdc48d5248743ddc8c9cea8147f788e82fb02229a1d27588af") {
+    return { minSimilarity: SEMANTIC_MIN_SIMILARITY, calibration: "experimental" };
+  }
+  return null;
+}
+
+export interface SemanticFit {
+  semanticSimilarity: number;
+  explanationEvidence: number;
+  timeFit: number;
+  score: number;
+}
+
+/** Pure, documented scoring after consent and availability have been checked. */
+export function scoreSemanticFit(input: { similarity: number; ownExplanation: number; peerExplanation: number; ownMinutes: number; peerMinutes: number }): SemanticFit {
+  const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  const semanticSimilarity = clamp(input.similarity);
+  // Reviewed explanation evidence can support an exchange. Missing evidence is
+  // unknown, not a finding that someone lacks understanding or can teach.
+  const explanationEvidence = Number(input.ownExplanation >= 2 / 3 || input.peerExplanation >= 2 / 3);
+  const longer = Math.max(input.ownMinutes, input.peerMinutes);
+  const timeFit = longer > 0 ? clamp(Math.min(input.ownMinutes, input.peerMinutes) / longer) : 0;
+  return { semanticSimilarity, explanationEvidence, timeFit,
+    score: .85 * semanticSimilarity + .1 * explanationEvidence + .05 * timeFit };
+}
 
 export interface PairInput {
   a: Explorer;

@@ -1,5 +1,5 @@
 "use client";
-// F6 / E4: "Your brain this week". Replays the event log in ≤ 10s with a scrubber.
+// F6 / E4: "Map history". Replays the event log in ≤ 10s with a scrubber.
 // Reduced motion: steps one day at a time instead of animating continuously.
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "@/components/ui/bits";
@@ -41,7 +41,7 @@ export default function TimeLapse({ start, end, tl, setTl, counts }: { start: nu
   if (!tl.on)
     return (
       <button className="btn absolute bottom-3 left-3 bg-panel/90 backdrop-blur" onClick={() => setTl(() => ({ on: true, t: start, playing: true }))}>
-        <span aria-hidden>▶</span> Your brain this week
+        <span aria-hidden>▶</span> Map history
       </button>
     );
 

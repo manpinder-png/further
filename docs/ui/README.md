@@ -1,99 +1,82 @@
-# UI domain: saved maps and collaborative learning
+# UI domain: refine the v1 map workspace
 
-The Iteration-nov1 visual foundation remains: a personal concept map, a collapsible journey panel, a concept inspector and a compact curiosity bar. Newer learning-first behavior builds on those surfaces. The browser is a client of local services; it never imports a database connection or a provider credential.
+The user rejected the v2 replacement layout on November 1. Preserve the v1 composition: collapsible journey rail, radial knowledge map, right concept inspector and bottom composer. Keep its dark palette, warm action colour and cyan accents. Simplify within these surfaces rather than replacing them. The shared persona-labelled ActivityPanel is explicitly retained.
 
-## Data and model modes
+## Experience
 
-The default is **saved local data**. `/api/data/bootstrap` restores the signed-in local learner's map, event history, profile, available peers, pending match and current room. A load failure stays visible. It does not replace a learner's map with samples.
+1. **Arrive.** Signed-out visitors see a compact account entry card with Create account and Sign in. An account starts with an empty workspace, not sample people or a sample graph.
+2. **Ask.** One composer accepts a question, a reviewed voice transcript, or a photo-derived question. Voice transcription begins after recording stops. Images and voice do not silently submit their inferred text. The photo's Explore confirmation starts a path.
+3. **Choose a starting point.** A successful expansion creates its own saved question and topic list. The existing radial canvas focuses on that question. Three small canvas controls distinguish This question, My knowledge map and Geomind. The saved-question selector and Questions in the journey pane select a learning focus. Starting an unrelated question switches the focus without changing the layout. Shared concepts retain their learning evidence across paths.
+4. **Learn one idea.** The topic surface offers Learn, Try explaining and Sources. Selecting a topic restores its saved lesson, including after a reload. A model request is made when there is no matching lesson or when the learner explicitly chooses Explain another way. Source search runs only when Sources is selected. Switching activities does not mount duplicate lessons or inspectors.
+5. **Check with your own words.** Typed or reviewed transcribed explanations receive real streamed AI feedback. Saved feedback is restored when returning to a topic. Learning participation is not presented as a mastery percentage or a game level. The interface describes reviewed explanations as evidence, not certification.
+6. **Read the entire map.** The v1 radial canvas, relationships, glow and pan/zoom remain. This question shows its focused concept graph. My knowledge map starts with concise topic summaries across all saved learning, including older concepts. Clicking a summary zooms into its original concepts; a leaf opens the existing lesson inspector. Breadcrumb/back and zoom-out restore the overview. Summary nodes use counts and neutral styling rather than synthetic learning scores. Map history remains available inside a topic's concept view. The full question remains available in the selector and hub tooltip.
+7. **Find another perspective.** Geomind groups eligible available learners around shared ideas. Its inspector explains why a connection is relevant, and an explicit invitation rechecks eligibility server-side. No people are fabricated when the community is empty. Find a peer also remains in the journey pane’s Connections section. Availability, adult-pilot confirmation, language and time stay explicit. Matching does not automatically interrupt a solo lesson after every explanation. Both people still accept before the shared text conversation opens. Offline community discovery and physical location are not part of the current matching consent.
+8. **Return.** Question history and current-path preference restore by learner. Session history resolves authorized peer names and avoids exposing raw UUIDs. Profile contains account identity, optional learning context and availability.
 
-The always-accessible `/architecture` page explains the domains, highlights direct dependencies, lists current agent cards, reads the SQL table inventory and displays public model routing plus health. Profile links to it as **How Further works**. It makes no inference request and exposes no credentials.
+The personal guide can advise using the saved map. Planning is read-only: it does not create a new quest or change the current learning goal. When a suggested topic already belongs to a path, the guide offers an Open action that selects the appropriate saved question and topic.
 
-The explicitly labeled local-development panel on Profile can create/select local learners or choose the sample map, stored separately in the browser. Sample requests carry `x-further-demo: true`; even this mode initializes a local session first. No sample peer can silently accept an invitation or impersonate a second participant.
+Saved lessons are scoped to the account, concept, depth instruction and live/fixture mode. They are read from successful persisted agent runs, validated again before returning, and never borrowed from another account or from demonstration requests. A changed lesson instruction starts a fresh version. Completing practice records the exact lesson run; completing an older version cannot hide a replacement lesson's practice. Interrupted requests keep their original retry key, while a confirmed failure before saving may start a fresh attempt.
 
-Model mode is independent of data mode. `modelMode: fixture` in bootstrap labels deterministic rehearsal responses while profiles, maps and conversations can still be saved locally. Every rendered fixture lesson, grade, photo interpretation and agent response is labeled. A null explain-back score is ungraded and earns no credit. Provider failures stay failures; the client does not substitute a fixture.
+## Authentication surfaces
 
-## Dependency map
+`/signup` and `/login` use the real `/api/auth/*` endpoints. Signup collects name, unique username, email and password; it does not claim email ownership has been verified. Google sign-in is shown as available only when the session response reports configured OAuth credentials. Google OAuth is parked at the user’s request; when unconfigured, its button and setup prompt are omitted, and email signup remains usable. No fake federation result or client-generated account is used.
+
+Successful login/signup and logout perform a hard navigation, clear the active workspace by replacing the store, and notify other tabs through the identity-change key. Account details are edited through `/api/auth/account`; learning preferences use `/api/data/profile`. Their save acknowledgements are separate. Test-persona selection is visible only when the backend explicitly enables local test profiles. It is not a substitute for account sign-in.
+
+## Boundaries
 
 ```mermaid
 flowchart LR
-  Profile[Profile and local learner chooser] --> Client[lib/client/live.ts]
-  Map[Map and journey] --> Store[lib/client/store.tsx]
-  Inspector[Concept inspector and Teach] --> Client
-  Curiosity[Text, microphone, photo] --> Client
-  Guide[Learning guide dialog] --> Client
-  Console[Developer agent console] --> Client
-  Room[Shared session screen] --> Client
-  Store --> Client
-  Client --> Identity[Local identity cookie]
-  Client --> Bootstrap[Map, profile and learning events]
-  Client --> Presence[Expiring presence and matching]
-  Client --> Agents[Independent HTTP agent endpoints]
-  Client --> Media[Transcription and image understanding]
-  Client --> Rooms[Durable sessions and safety actions]
-  Rooms --> Store
-  Agents --> Store
+  Account[Sign in and profile] --> Auth[Account API]
+  Question[Question composer] --> Expansion[Map agent stream]
+  Paths[Saved question paths] --> Store[Client store]
+  Lesson[Learn / explain / sources] --> Stream[Shared streaming client]
+  People[Learn together] --> Match[Consent and matching]
+  Geomind[Conceptual neighborhood] --> Discovery[Public eligible peer projection]
+  Discovery --> Identity
+  Room[Shared conversation] --> Session[Session API]
+  Auth --> Identity[Server-owned identity]
+  Expansion --> Store
+  Stream --> Agents[Independent agents]
+  Store --> Snapshot[Authorized snapshot]
+  Match --> Identity
+  Session --> Identity
 ```
 
-## Client contracts
+UI reads public contracts and HTTP endpoints, never database drivers or model credentials. `lib/client/learning-paths.ts` scopes topic views to question runs, preserves shared concepts, orders prerequisites and leaves cycles bounded. `lib/client/store.tsx` owns authenticated snapshots and event-derived state. `lib/client/live.ts` owns same-origin requests and explicit fixture headers.
 
-`domains/ui/contracts.ts` defines browser transport types. Agent inputs and results are shared from `domains/agents/contracts.ts`, imported as types only. `lib/client/live.ts` handles same-origin cookies, explicit sample headers and JSON errors.
+`lib/client/use-geomind.ts` loads the authenticated neighborhood only while that view is active. It cancels obsolete requests, clears stale results after failure and separates peer selection from topic selection. Discovery is a database operation with real waiting/error states, not simulated AI streaming. The public DTO is in `lib/geomind.ts`; private data and eligibility stay on the server. See [Geomind](../GEOMIND.md) for the consent and scaling boundaries.
 
-| Surface | Endpoint | Behavior |
-| --- | --- | --- |
-| Startup | `GET /api/data/bootstrap` | Restore canonical server state, including actor-relative match/session pointers. |
-| Developer learner chooser | `GET/POST /api/local/identity` | Create or select a local learner. Uses a signed HttpOnly cookie. |
-| Profile | `PATCH /api/data/profile` | Save an explicit draft, including availability minutes. |
-| Map interaction | `POST /api/data/events` | Ordered writes with a stable idempotency key; failed writes remain retryable in the tab. |
-| Available peers | `POST /api/local/presence` | Visible-tab heartbeat every ten seconds. The server derives authoritative profile and matching data. |
-| Expand curiosity | `POST /api/expand` | Stream real agent activity and provisional text; apply concepts only after the validated final result, then refresh saved state. Index warnings remain visible. |
-| Concept and lesson | `GET /api/card/:slug`, `POST /api/teach` | Cancellable requests, visible errors and fixture labels. Lesson cache is separated by actor and data mode. |
-| Explain back | `POST /api/explain` | Refresh server-persisted scoring; no duplicate learning event. Ungraded fixture output never changes mastery. |
-| Voice input | `POST /api/transcribe` | Browser capture becomes mono 24 kHz, 16-bit PCM WAV. Real cumulative transcription updates replace the draft; the final result alone starts the next action. Tracks release on stop, error and navigation. |
-| Photo question | `POST /api/media/understand` | Multipart `image`. The learner reviews the returned question before expanding the map. |
-| Independent agent | `POST /api/agents/:id` | Shared agent contract; guide dialog calls knowledge-map, peer-guide or resource-guide. |
-| Agent discovery | `GET /api/agents` | Developer console lists current cards and can invoke each agent with JSON input. |
-| Match handshake | `GET/POST /api/match` | Poll pending and waiting states; both learners must accept. No automatic sample acceptance. |
-| Room restore | `GET /api/local/sessions/:id` | Restore messages, peer, exchanged concepts and ended/blocked state. |
-| Shared message/end | `POST /api/session/:id/message`, `/end` | Stable retry keys and server acknowledgement before claiming sent/completed. |
-| Safety | `POST /api/local/sessions/:id/block`, `/report` | Durable block/report actions. Reports are stored locally, not sent to an outside team. |
+`lib/client/use-knowledge-overview.ts` checks the owner's saved summary before requesting streamed generation. It invalidates on concept/relationship changes and isolates obsolete responses by actor and graph revision. `KnowledgeMap` receives distinct aggregate groups and real concept records; it renders one abstraction level at a time. Selecting a summary does not record a learning event or trigger a lesson call. Real member concepts retain their existing learning behavior. `KnowledgeOverviewInspector` summarizes the selected level without repeating the full leaf list.
 
-A second independent learner needs a separate browser profile or isolated browser context. Tabs in the same browser share the cookie, so switching the developer persona changes that browser's identity and notifies its other tabs to reload. The chooser is a local development aid, not production sign-in.
+Both overview requests carry the captured actor consistency header so a changed browser session cannot substitute a different account's result. A directly selected saved concept can still open its lesson while the derived overview is loading or unavailable. Narrow canvases arrange summary cards compactly and refit on meaningful width changes; desktop keeps the radial layout. Counts distinguish aggregate topics from underlying concepts. Reviewed, Exploring and Not started are mutually exclusive display buckets; this does not change stored learning evidence.
 
-The connector screen is now a local HTTP agent console. It does not claim MCP or A2A compliance, invent an external access token, or claim a Meta assistant is connected. External delegation and protocol adapters require their own implementation.
+## Real streaming and progressive disclosure
 
-## Real progress and streamed responses
+Every AI flow requests `Accept: text/event-stream`. `useAIStream` consumes server events and resets only after a validated result. The shared ActivityPanel shows the current agent and actual stage immediately, a readable live response when text arrives, real elapsed time, and Stop/Try again controls. It emphasizes the most recent collaborator's readable draft; other contributions and the event history remain available under See steps. Completed work collapses to a small Response ready row rather than crowding the lesson.
 
-`lib/client/stream.ts` consumes the common SSE envelope. `lib/client/useAIStream.ts` manages cancellation and provisional state; `components/activity/ActivityPanel.tsx` renders safe activity and draft answers for every learner, independent of the builder flag. The panel shows actual agent and tool/delegation updates, elapsed time and an explanation when no new update arrives. It retains completion/error information and offers cancel/retry where relevant.
+Drafts are provisional. The graph and feedback only apply after the final validated envelope and persistence acknowledgement. Failed or interrupted drafts never become saved results. No artificial typing delay, guessed percentage, private reasoning, raw tool arguments or credentials are displayed. Ordinary saves and matching use operation status, not pretend token streaming.
 
-- Every AI request sends `Accept: text/event-stream` through the same-origin client. Activity comes from the server; the UI never animates a completed answer into a pretend stream.
-- `AgentEvent` is imported from the runtime contract. Only approved readable fields enter the draft. A `thinking` event clears that agent's previous model-turn draft; `replace: true` replaces a field rather than appending it. This also handles cumulative ASR transcript corrections.
-- Draft text is explicitly provisional. Only a `result` envelope resolves the request and permits the final lesson, graph, feedback or image question to be applied. An interrupted/error stream retains an unapplied draft and never becomes a successful result.
-- Closing or cancelling aborts the client request. Cancellation does not undo a human message or other operation already saved by the server; the UI explains that distinction and rooms continue to refresh saved messages.
-- Map expansion, guide, concept card, teaching, explain-back, photo understanding, voice transcription, shared-session facilitation and the developer agent console use the shared stream. The course endpoint supports the same transport for future callers; there is no separate mounted course screen.
-- Profile/learning-event writes, room loading, identity changes and matching use `OperationStatus`, which describes database/consent work and elapsed time without pretending it is model output.
-- Raw prompts, private tool results and model reasoning are never rendered. Model/provider configuration stays on development surfaces; public operational activity is visible during ordinary learning.
+Source citation provenance and link reachability remain different. A reachable URL is labelled Link opens. An unchecked URL is labelled Cited source · link not checked. An unavailable link is identified without declaring the entire lesson failed. Model content still requires judgment and useful source comparison.
 
-## Interaction and persistence details
+## Data modes and remaining limits
 
-- Only one concept inspector is mounted at a time across desktop and mobile. Hidden duplicate inspectors previously could trigger duplicate learning events and model requests.
-- Practice challenge answers remain local feedback. Finishing the lesson records self-reported practice; only the server explain-back endpoint awards an assessment score.
-- Opening a video or link does not count as completing it. A separate learner action marks completion.
-- Profile edits remain a draft until Save changes succeeds. Text for failed messages stays in the composer. Failed learning-event writes retain their idempotency keys for Retry saving.
-- Map events, concepts, profiles, matches, rooms and safety actions are server-owned. Tile positions are reconstructed deterministically for presentation. Quest history is restored from the learner's saved knowledge-map agent runs. Matching temporary entries are replaced while unrelated running/error attempts stay visible; UI selection remains presentation state.
-- The session screen reads a room by URL and restores it after refresh, including finished or blocked rooms. It does not depend on a prior in-memory match modal.
-- Polling is local development plumbing. Push transport can replace presence and room polling behind the same snapshots.
-- There is voice input and image understanding. There is no implemented text-to-speech, generated-image learning flow, video call or external connector claim.
+Saved local accounts and real provider calls are the default. Explicit fixture mode labels model output as rehearsal. Explicit sample data is separate from real account state and does not silently replace failed reads. Profile save errors retain the draft. Human-message failures retain the composer text; server-persisted results are never posted again as duplicate learning events.
+
+The room remains text-based, with local polling. Reports remain local records. There is no implied live community when presence is empty, no voice/video call, no production email delivery or account recovery, and no external MCP/A2A connection claim. The architecture page reads all ordered migrations, current agent contracts and provider routing, with configuration distinguished from live verification.
 
 ## Verification
 
-Run the repository typecheck and lint commands with the available Node runtime. `tests/ui-audio.test.ts` checks that microphone capture produces the required WAV framing, mono PCM sample format, clipping and target-rate resampling. `tests/ui-profile.test.ts` verifies that server identity, revision and unknown nested fields cannot be sent back as profile edits. `tests/ui-missions.test.ts` checks quest rehydration, one-to-one temporary-entry replacement and preservation of unrelated in-flight attempts. `tests/ui-stream.test.ts` checks split UTF-8/CRLF, comments, multiline SSE, abort and connection interruption, final-result gating, cumulative transcript replacement, repair reset and suppression of private reasoning fields. Root integration tests cover the server contracts; browser QA should exercise the following together:
+`tests/ui-learning-paths.test.ts` covers unrelated-question isolation, shared concepts across questions, missing/pending topics, prerequisite order and cycles. `tests/ui-lesson-state.test.ts` covers exact lesson completion and replacement behavior. Route and repository tests cover lesson reuse without inference, explicit replacement, depth/account/mode isolation and restoration after reopening the database. Existing UI tests cover WAV encoding, profile field boundaries, mission rehydration, SSE framing and cancellation. Account and HTTP tests validate identity/owner boundaries separately.
 
-1. Fresh local learner starts with an empty map; reload preserves actual concepts and profile edits.
-2. Two isolated browser contexts create distinct learners, share eligible concepts, opt in and accept a match independently.
-3. Room messages reach the other context and survive reload. Finish, block and report persist.
-4. A failed save shows an actionable error; retry uses the same idempotency key.
-5. Sample mode and fixture AI are visibly distinguished from live inference and real people.
-6. At phone width, only one inspector is mounted and guide/photo controls remain reachable.
-7. Recording stops on navigation; photo submission asks for confirmation before map expansion.
+Browser acceptance should verify signup/signin/logout, Google-unconfigured messaging, the v1 three-pane composition and dock, first question → lesson → explanation, switching saved question focus without losing work, visible persona-labelled streaming, explicit source search, matching consent and the mobile journey drawer/concept sheet. No unit test is a physical microphone test or proof of Google federation without a real configured OAuth round-trip.
 
-No UI test constitutes a live provider check, microphone hardware check or production scale claim.
+## Nested knowledge navigation
+
+The cumulative map now keeps a breadcrumb stack, rather than one selected group ID. Each level shows its immediate topic/subtopic containers; leaves open the original canonical concepts. Click a breadcrumb to jump out, use the central node or ↑ to return one level, or zoom out past the current fitted view. A wheel gesture settles before it can leave another level. Wide levels show twelve containers at a time with Previous/More controls; no unseen concepts are discarded. Ordinary question focus and the v1 journey/map/inspector/dock composition remain intact.
+
+Topic summaries come from real bounded Meta `summarize` calls and are durable owner-only agent outputs. Branches with more than four concepts check the saved branch summary before generating a narrower grouping. A response becomes a new semantic level only if it strictly narrows and exactly covers its parent; repeatedly returning the same group cannot cause an infinite drill-in. The UI displays actual streaming activity while subtopics are prepared, retains access to canonical concepts during a failed summary, and supports cancellation/retry.
+
+Saved `part_of` edges also supply nested concept containers: the existing graph convention is parent `src` → child `dst`. The same canonical concept may be reached under multiple parents without duplicating its evidence. Invalid legacy cycles are bounded at the navigation boundary; no graph facts are deleted. A container's own lesson stays available through Learn this concept in its inspector. These graph relationships and the derived topic summaries remain separate kinds of information.
+
+`POST /api/knowledge/overview/read` checks a branch cache using an owner-validated concept scope, without inference. Generation uses the same scope on the overview POST endpoint. Client-supplied raw model context is never accepted. Complete map hashes are independent of model request size. Oversized maps are summarized in size-aware batches of at most 120 concepts, then reduced through read-only child summaries tied to owned canonical representative IDs. Every original concept remains represented. The composed hierarchy is stored privately in `agent_runs`; individual batch/branch caches make retries reusable. Model inputs remain bounded at 200 concepts, 800 internal relationships and 160 KB; cross-batch relationships stay in the canonical graph and can still link the displayed topics. This is incremental context construction, not a claim of unlimited throughput or free inference.
