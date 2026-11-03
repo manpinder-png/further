@@ -97,6 +97,8 @@ export const LearningOutput = z.object({
   format: z.enum(["predict", "manipulate", "analogy", "story", "source-clip", "short-read", "discussion", "feedback"]),
   interaction: z.object({ prompt: z.string().max(600), options: z.array(z.object({ label: z.string().max(180), reveal: z.string().max(600) })).max(6) }).nullable().default(null),
   branches: z.array(z.object({ title: z.string().max(150), why: z.string().max(300) })).max(4).default([]),
+  /** explain-back: the next practice question, aimed at the gap the feedback found. Empty for other modes. */
+  nextPrompt: z.string().max(300).default(""),
   challenge: z.object({ kind: z.enum(["spot-the-error", "order-steps", "predict-output", "fill-blank"]), prompt: z.string().max(600), options: z.array(z.string().max(250)).min(2).max(6), correct: z.number().int().min(0).max(5), explanation: z.string().max(800) }).nullable().default(null),
   adaptedNote: z.string().max(500).default(""),
   score: z.number().int().min(0).max(3).nullable().default(null),

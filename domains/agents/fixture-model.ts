@@ -60,6 +60,7 @@ export class FixtureAgentModel implements AgentModel {
         format: mode === "facilitate" ? "discussion" : mode === "explain-back" ? "feedback" : "predict",
         interaction: mode === "solo" ? { prompt: "Which is more useful for testing your explanation?", options: [{ label: "Try a new example", reveal: "A new example tests whether the idea transfers." }, { label: "Repeat the same words", reveal: "Repetition can help recall; an example also tests understanding." }] } : null,
         branches: [], challenge: null, adaptedNote: "Explicit offline fixture; no model personalization.", score: null,
+        nextPrompt: mode === "explain-back" ? `Offline rehearsal: apply ${title} to a different everyday situation. What stays the same and what changes?` : "",
         lessons: input.presentation === "course" ? [
           { title: "Name the question", body: "Offline practice: write one question you want this concept to answer.", format: "hook" },
           { title: "Make an example", body: "Offline practice: choose a small example and explain what changes at each step.", format: "example" },

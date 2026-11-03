@@ -61,11 +61,25 @@ export function resumePoints(paths: readonly LearningPath[], nodes: Record<strin
   return out.sort((a, b) => b.lastTouched - a.lastTouched);
 }
 
-export interface ExplanationAttempt { at: number; score: number; feedback: string | null }
+export interface ExplanationAttempt { at: number; score: number; feedback: string | null; prompt: string | null; nextPrompt: string | null; runId: string | null }
 
 /** Every reviewed explanation of one concept, oldest first. */
 export function explanationAttempts(slug: string, events: readonly FEvent[]): ExplanationAttempt[] {
+  const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
   return events.filter(event => event.slug === slug && event.kind === "explain" && typeof event.payload?.score === "number")
-    .map(event => ({ at: event.at, score: event.payload!.score as number, feedback: typeof event.payload?.feedback === "string" ? event.payload.feedback : null }))
+    .map(event => ({ at: event.at, score: event.payload!.score as number, feedback: text(event.payload?.feedback), prompt: text(event.payload?.prompt), nextPrompt: text(event.payload?.nextPrompt), runId: text(event.payload?.runId) }))
     .sort((a, b) => a.at - b.at);
+}
+
+/** The explain-back rubric in learner language. A 3 completes a concept. */
+export const SCORE_LABEL = ["Off topic", "Names the idea", "Explains how it works", "Explains how and why"] as const;
+export const COMPLETE_SCORE = 3;
+
+/** The first practice question, and a fallback when a review returns no follow-up question. */
+export function practicePrompt(title: string, lastScore: number | null): string {
+  const name = title.trim();
+  if (lastScore === null) return `How would you explain ${name} to a friend? Say how it works and why, with one example.`;
+  if (lastScore < 2) return `Walk through how ${name} actually works, step by step, using one concrete example.`;
+  if (lastScore < COMPLETE_SCORE) return `Now say why ${name} works that way: what would change or break if one part were different?`;
+  return `Apply ${name} to a situation you haven't used yet. What stays the same, and what changes?`;
 }

@@ -46,7 +46,8 @@ export default function MapScreen() {
   const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT);
   const [maxPanel, setMaxPanel] = useState(PANEL_MAX);
   const [review, setReview] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"learn" | "explain" | "sources" | undefined>(undefined);
+  // A requested starting tab applies only to the concept it was requested for (e.g. Review's Explain again).
+  const [inspectorTab, setInspectorTab] = useState<{ slug: string; tab: "learn" | "explain" | "sources" } | null>(null);
   const [tl, setTl] = useState<TL>({ on: false, t: 0, playing: false });
   const restoredFor = useRef<string | null>(null);
   const lastOverviewHash = useRef<string | null>(null);
@@ -184,7 +185,7 @@ export default function MapScreen() {
     try { if (actorId) localStorage.removeItem("further:path:" + actorId); } catch { /* Optional view preference. */ }
   };
   const openTopic = (slug: string, tab?: "learn" | "explain" | "sources") => {
-    setInspectorTab(tab);
+    setInspectorTab(tab ? { slug, tab } : null);
     const group = view === "knowledge" ? knowledgeGroups.find(item => item.conceptSlugs.includes(slug)) : undefined;
     if (group) { setKnowledgeTrail([group]); setKnowledgePage(0); }
     else if (view === "geomind" || view === "knowledge" || (scope && !scope.has(slug))) {
@@ -228,7 +229,7 @@ export default function MapScreen() {
   // Only a durable saved question can be extended; "Saved topics" and unsaved placeholders cannot.
   const pathRunId = view === "question" && activePath && activePath.key !== "saved-topics" && missions.some(mission => mission.runId === activePath.key) ? activePath.key : undefined;
   const reviewPanel = <Review paths={paths} onExplainAgain={(slug) => { setReview(false); openTopic(slug, "explain"); }} onResume={resumeQuestion} onReplay={events.length ? () => { setReview(false); chooseView("question"); setTl({ on: true, t: events[0].at, playing: true }); } : undefined} onClose={() => setReview(false)} />;
-  const panelBody = view === "geomind" ? peerInspector : review && !selectedInView ? reviewPanel : view === "knowledge" && !selectedInView ? knowledgeInspector : <Inspector key={(actorId ?? "sample") + ":" + (selectedInView ?? "map")} slug={selectedInView} activeSlugs={activeSlugs} onPathCreated={finishQuestion} onClose={() => dispatch({ t: "select", slug: null })} pathRunId={pathRunId} initialTab={inspectorTab} />;
+  const panelBody = view === "geomind" ? peerInspector : review && !selectedInView ? reviewPanel : view === "knowledge" && !selectedInView ? knowledgeInspector : <Inspector key={(actorId ?? "sample") + ":" + (selectedInView ?? "map")} slug={selectedInView} activeSlugs={activeSlugs} onPathCreated={finishQuestion} onClose={() => dispatch({ t: "select", slug: null })} pathRunId={pathRunId} initialTab={inspectorTab && inspectorTab.slug === selectedInView ? inspectorTab.tab : undefined} />;
   return <div className="absolute inset-0 flex min-h-0 flex-col">
     {(modelMode === "fixture" || dataMode === "demo") && <p className="shrink-0 border-b border-line bg-panel px-4 py-2 text-xs text-muted" role="status">{dataMode === "demo" ? "Sample map · your account’s saved data is separate." : "Rehearsal AI is enabled. Responses are labelled examples."}</p>}
     {(saveError || loadingError) && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-err/40 bg-panel px-4 py-2 text-sm" role="alert"><span className="flex-1 text-err">{saveError ?? loadingError}</span><button className="btn" disabled={pendingWrites > 0} onClick={() => void (saveError ? retryPendingWrites() : refreshSnapshot()).catch(() => undefined)}>Try again</button></div>}

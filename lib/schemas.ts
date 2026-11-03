@@ -38,6 +38,8 @@ export const ModelNodeLine = z.object({
 export const ExplainRequest = z.object({
   slug,
   transcript: z.string().trim().min(1).max(3000),
+  /** The practice question this answer responds to; graded together with the answer. */
+  prompt: z.string().trim().max(400).optional(),
 });
 export const ExplainResult = z.object({
   score: z.number().int().min(0).max(3),

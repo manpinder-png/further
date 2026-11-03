@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { explanationAttempts, resumePoints, slippingConcepts, weeklyRecap } from "../lib/review.ts";
+import { COMPLETE_SCORE, SCORE_LABEL, explanationAttempts, practicePrompt, resumePoints, slippingConcepts, weeklyRecap } from "../lib/review.ts";
 import type { Concept, FEvent, UserNode } from "../lib/types.ts";
 
 const DAY = 86_400_000;
@@ -42,4 +42,19 @@ test("resume points skip finished questions and pick up the most recently touche
 test("explanation attempts are returned oldest first with their feedback", () => {
   const attempts = explanationAttempts("a", [ev("a", "explain", 300, { score: 3, feedback: "Clear." }), ev("a", "explain", 100, { score: 1, feedback: "Add an example." }), ev("a", "open", 200), ev("b", "explain", 150, { score: 2 })]);
   assert.deepEqual(attempts.map((attempt) => [attempt.at, attempt.score, attempt.feedback]), [[100, 1, "Add an example."], [300, 3, "Clear."]]);
+});
+
+test("explanation attempts keep the question answered and the follow-up question", () => {
+  const [attempt] = explanationAttempts("a", [ev("a", "explain", 100, { score: 2, feedback: "Good mechanism.", prompt: "How does it work?", nextPrompt: "Why does it fail when inputs double?", runId: "run-1" })]);
+  assert.equal(attempt.prompt, "How does it work?");
+  assert.equal(attempt.nextPrompt, "Why does it fail when inputs double?");
+  assert.equal(attempt.runId, "run-1");
+});
+
+test("practice prompts climb the rubric: first ask, then how, then why, then transfer", () => {
+  assert.match(practicePrompt("Attention", null), /to a friend/);
+  assert.match(practicePrompt("Attention", 1), /step by step/);
+  assert.match(practicePrompt("Attention", 2), /why/);
+  assert.match(practicePrompt("Attention", 3), /situation you haven't used/);
+  assert.equal(SCORE_LABEL[COMPLETE_SCORE], "Explains how and why");
 });
