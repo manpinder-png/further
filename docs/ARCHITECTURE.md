@@ -80,6 +80,8 @@ Owner search can index concept descriptions, explicit intent and selected redact
 
 Geomind displays at most 24 available peers, with conceptual similarity controlling radius. Angular placement is illustrative, not a global coordinate or physical location. Opening it sends no invitation; an explicit invitation rechecks eligibility. Different paired concept IDs remain attached through the room and completion. See [Geomind behavior and limits](GEOMIND.md).
 
+The Geomind UI loads its neighborhood on view entry and refreshes only on explicit Refresh/retry actions. It does not poll or reload on focus, profile/activity changes or invitation outcomes. Successful empty neighborhoods leave the map unobstructed; operational and consent notices remain. Displayed peers can become stale between refreshes, so invitation eligibility is still rechecked server-side.
+
 The local encoder is pinned `FacebookAI/roberta-base`, masked-mean pooled, centered using a frozen reference artifact and normalized. Its space revision includes that artifact; incompatible versions are never compared. This is an **experimental feature encoder**, not a retrieval-trained production model. Missing/stale vectors produce explicit states, never a keyword fallback. See [retrieval and evaluation](retrieval/README.md).
 
 Short owner-search queries can reuse bounded current concept descriptions when they match an owned title/slug or the original question of a saved live map. Unrelated profile intent and private metadata are not appended, and no additional model call is made. This changes query representation only: stored vectors, the encoder revision, consented peer targets and eligibility remain unchanged.

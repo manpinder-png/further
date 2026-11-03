@@ -103,7 +103,7 @@ export default function MapScreen() {
   }, [events]);
   // Directly selected saved lessons remain accessible while the derived overview loads or fails.
   const selectedInView = selected && concepts[selected] && (!scope || scope.has(selected)) ? selected : null;
-  const geomind = useGeomind({ active: view === "geomind" && ready && dataMode === "local", actorId: actorId ?? null, revision: `${profile.openToMatch}:${profile.staticProfile.age18Plus}:${profile.language}:${profile.availableMinutes}:${events.length}` });
+  const geomind = useGeomind({ active: view === "geomind" && ready && dataMode === "local", actorId: actorId ?? null });
   const selectedPeer = geomind.snapshot?.neighbors.find(peer => peer.id === selectedPeerId) ?? null;
   const cardOpen = view === "geomind" ? Boolean(selectedPeer) : Boolean(selectedInView);
   const sheetOpen = sheet || cardOpen || review;
@@ -228,7 +228,6 @@ export default function MapScreen() {
     dispatch({ t: "match", m: match });
     setSelectedPeerId(null);
     void refreshSnapshot().catch(() => undefined);
-    void geomind.refresh();
   };
 
   if (authReady && auth && !auth.authenticated && !auth.localProfilesEnabled) return <div className="grid-bg flex h-full items-center justify-center p-6"><section className="max-w-md rounded-xl border border-line bg-panel p-6"><h1 className="text-2xl font-semibold">Your map starts with a question.</h1><p className="mt-3 text-sm leading-relaxed text-muted">Save what you’re learning, explore connected ideas, and find someone to learn with.</p><div className="mt-5 flex gap-3"><Link href="/signup" className="btn btn-primary">Create account</Link><Link href="/login" className="btn">Sign in</Link></div><p className="mt-4 text-xs text-muted">Your account keeps your learning history together.</p></section></div>;

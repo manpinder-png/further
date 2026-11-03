@@ -6,8 +6,8 @@ import type { MatchRequest } from "@/lib/types";
 import { localJson } from "@/lib/client/live";
 
 /** The server supplies the consented projection; this hook never builds peers from private maps. */
-export function useGeomind({ active, actorId, revision }: { active: boolean; actorId: string | null; revision: string }) {
-  const key = active && actorId ? `${actorId}:${revision}` : null;
+export function useGeomind({ active, actorId }: { active: boolean; actorId: string | null }) {
+  const key = active && actorId ? actorId : null;
   const current = useRef(key);
   current.current = key;
   const request = useRef<AbortController | null>(null);
@@ -20,7 +20,7 @@ export function useGeomind({ active, actorId, revision }: { active: boolean; act
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    // Keep the selected detail stable during a brief poll. A failed refresh clears
+    // Keep the selected detail stable during a manual refresh. A failed refresh clears
     // the projection, and a successful response replaces it in full.
     setState(previous => ({ key, snapshot: previous?.key === key ? previous.snapshot : null, loading: true, error: null }));
     const timeout = setTimeout(() => {
@@ -41,21 +41,7 @@ export function useGeomind({ active, actorId, revision }: { active: boolean; act
   useEffect(() => {
     if (!key) return;
     void refresh();
-    const clearProjection = () => {
-      request.current?.abort();
-      setState(null);
-    };
-    const onFocus = () => { if (document.visibilityState === "visible" && document.hasFocus()) void refresh(); };
-    const onVisibility = () => { if (document.visibilityState === "visible") onFocus(); else clearProjection(); };
-    const timer = setInterval(onFocus, 20_000);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", clearProjection);
-    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", clearProjection);
-      document.removeEventListener("visibilitychange", onVisibility);
       request.current?.abort();
       invitation.current?.abort();
       invitation.current = null;
@@ -71,9 +57,8 @@ export function useGeomind({ active, actorId, revision }: { active: boolean; act
     setInviteState({ key, peerId, error: null });
     const timeout = setTimeout(() => {
       if (current.current !== key || invitation.current !== controller) return;
-      setInviteState({ key, peerId: null, error: "Couldn't confirm the invitation in time. Check whether it was saved before trying again." });
+      setInviteState({ key, peerId: null, error: "Couldn't confirm the invitation in time. Use Refresh to check whether it was saved before trying again." });
       controller.abort();
-      void refresh();
     }, 20_000);
     try {
       const result = await localJson<{ match: MatchRequest }>("/api/geomind/invite", { method: "POST", body: JSON.stringify({ peerId, conceptSlug, ...(peerConceptSlug ? { peerConceptSlug } : {}) }), signal: controller.signal });
@@ -83,14 +68,13 @@ export function useGeomind({ active, actorId, revision }: { active: boolean; act
     } catch (error) {
       if (!controller.signal.aborted && current.current === key) {
         setInviteState({ key, peerId: null, error: error instanceof Error ? error.message : "Couldn't confirm the invitation. Refresh to check its status before trying again." });
-        void refresh();
       }
       return null;
     } finally {
       clearTimeout(timeout);
       if (invitation.current === controller) invitation.current = null;
     }
-  }, [key, refresh]);
+  }, [key]);
 
   return {
     snapshot: state?.key === key ? state.snapshot : null,
