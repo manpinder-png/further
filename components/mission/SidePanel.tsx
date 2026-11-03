@@ -29,10 +29,15 @@ interface SidePanelProps {
   mobileSheet?: { open: boolean; onToggle: () => void };
   /** The saved run behind the current question; enables Keep exploring. */
   extendsRunId?: string;
+  /** Desktop: one-click widen/restore, the alternative to dragging the panel's edge. */
+  widthControl?: { wide: boolean; onToggle: () => void };
+  /** A wide panel centres its content at a readable line length. */
+  wide?: boolean;
   children?: React.ReactNode;
 }
 
-export default function SidePanel({ view, paths, activeQuestionKey, onChooseQuestion, activeSlugs, showPath, onSelectTopic, question, onComplete, onOpenTopic, mobileSheet, extendsRunId, children }: SidePanelProps) {
+export default function SidePanel({ view, paths, activeQuestionKey, onChooseQuestion, activeSlugs, showPath, onSelectTopic, question, onComplete, onOpenTopic, mobileSheet, extendsRunId, widthControl, wide = false, children }: SidePanelProps) {
+  const column = wide ? "mx-auto w-full max-w-[760px]" : "w-full";
   const stats = useMapStats();
   const heading = view === "knowledge" ? "My knowledge map" : view === "geomind" ? "Geomind" : null;
   const collapsed = Boolean(mobileSheet && !mobileSheet.open);
@@ -46,15 +51,16 @@ export default function SidePanel({ view, paths, activeQuestionKey, onChooseQues
           {paths.map((path) => <option key={path.key} value={path.key}>{path.question}</option>)}
         </select>
       </> : <h2 className="text-sm font-semibold">Your first question</h2>}
+      {widthControl && <button type="button" className={`btn btn-ghost btn-icon ml-auto min-h-8 shrink-0 border-transparent ${widthControl.wide ? "text-accent" : "text-muted hover:text-text"}`} onClick={widthControl.onToggle} aria-pressed={widthControl.wide} aria-label={widthControl.wide ? "Restore panel width" : "Widen panel"} title={widthControl.wide ? "Restore panel width (or drag its left edge)" : "Widen panel (or drag its left edge)"}><WidthIcon wide={widthControl.wide} /></button>}
     </header>
-    <div className="scroll min-h-0 flex-1">{showPath ? <PathList activeSlugs={activeSlugs} onSelectTopic={onSelectTopic} question={question} extendsRunId={extendsRunId} /> : children}</div>
+    <div className="scroll min-h-0 flex-1"><div className={`h-full ${column}`}>{showPath ? <PathList activeSlugs={activeSlugs} onSelectTopic={onSelectTopic} question={question} extendsRunId={extendsRunId} /> : children}</div></div>
     {/* The summary row steps aside while a card is open so the lesson gets the height. */}
     {showPath && <div className="shrink-0 border-t border-line px-3 py-2 text-xs text-muted">
       <Link href="/profile" className="hover:text-text" title="Your progress, activity and sessions">{plural(stats.concepts, "concept")} · {stats.understood} explained</Link>
       <FindPeer activeSlugs={activeSlugs} />
     </div>}
     </>}
-    <CommandBar variant="panel" onComplete={onComplete} question={question} onOpenTopic={onOpenTopic} />
+    <CommandBar variant="panel" onComplete={onComplete} question={question} onOpenTopic={onOpenTopic} column={column} />
   </div>;
 }
 
@@ -142,5 +148,8 @@ function FindPeer({ activeSlugs }: { activeSlugs?: string[] }) {
     {profile.openToMatch && (looking === "looking" ? <span className="w-full"><OperationStatus label="Checking available learners" detail="Shared topics, a common language and enough time." /></span> : <button type="button" className="btn min-h-8 shrink-0 px-2 py-1 text-xs" onClick={find} disabled={activeSlugs?.length === 0} title="Find a learner on this question. You both accept before anything opens.">Find a partner</button>)}
   </div>;
 }
+
+/** Arrows out to widen, arrows in to restore. */
+const WidthIcon = ({ wide }: { wide: boolean }) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{wide ? <><path d="M1.5 8h4M4 5.5 6 8 4 10.5" /><path d="M14.5 8h-4M12 5.5 10 8l2 2.5" /></> : <><path d="M6 8H1.5M4 5.5 1.5 8 4 10.5" /><path d="M10 8h4.5M12 5.5 14.5 8 12 10.5" /></>}<path d="M8 3v10" strokeDasharray="1.5 2" /></svg>;
 
 const PeopleIcon = () => <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-mastery" aria-hidden><circle cx="6.5" cy="6" r="2.5" /><circle cx="12.5" cy="7" r="2" /><path d="M2 15c.5-2.5 2.3-4 4.5-4s4 1.5 4.5 4M11 11.2c2.2-.3 4 1 4.5 3.3" /></svg>;

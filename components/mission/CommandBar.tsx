@@ -10,7 +10,7 @@ import IndexingStatus from "@/components/activity/IndexingStatus";
 const EXAMPLES = ["Why does AI need special chips?", "How do chatbots remember things?", "What makes a model smaller?"];
 
 /** The original map dock, with reviewed voice input and real agent progress. */
-export default function CommandBar({ variant = "dock", onComplete, question, onOpenTopic }: { variant?: "dock" | "panel" | "hero" | "compact"; onComplete?: () => void; question?: string; onOpenTopic?: (slug: string) => void }) {
+export default function CommandBar({ variant = "dock", onComplete, question, onOpenTopic, column = "" }: { variant?: "dock" | "panel" | "hero" | "compact"; onComplete?: () => void; question?: string; onOpenTopic?: (slug: string) => void; /** Panel variant: width classes shared with the panel body. */ column?: string }) {
   const { say, dispatch, concepts } = useStore();
   const { run, busy, error: expandError, activity, cancel, retry } = useExpand();
   const voice = useAIStream();
@@ -77,7 +77,7 @@ export default function CommandBar({ variant = "dock", onComplete, question, onO
   </>;
   const questionInput = recording ? <div className={`flex min-w-0 flex-1 items-center gap-[3px] px-3 ${dock ? "h-12" : "min-h-24"}`} role="status"><span className="mr-2 shrink-0 text-xs text-accent">Listening {(rec.elapsed / 1000).toFixed(1)}s</span>{rec.level.map((level, i) => <span key={i} className="w-[3px] bg-accent/70" style={{ height: Math.max(5, level * 40) }} />)}</div> : <textarea id="curiosity-question" ref={input} value={text} onChange={(event) => setText(event.target.value)} maxLength={500} disabled={busy || rec.state === "processing"} placeholder={busy ? "Growing your map…" : panel ? "What are you curious about?" : dock ? "What are you curious about?  ( / )" : "I'm curious about…"} title={panel ? "Press / to focus" : undefined} rows={dock ? voiceReview ? 2 : 1 : 3} className={`min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-dim ${dock ? `max-h-28 px-2 text-sm leading-6 ${panel ? "py-2" : "py-3"}` : "w-full text-lg leading-relaxed"}`} aria-label="What are you curious about?" onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && (dock ? !event.shiftKey : event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit(text); } }} />;
   return <>
-    {panel ? <div className="shrink-0 border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2">
+    {panel ? <div className="shrink-0 border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2"><div className={column}>
       <div className="max-h-[36dvh] space-y-2 overflow-y-auto empty:hidden">{progress}</div>
       {voiceReview && <p className="mt-1 text-xs text-muted">Review your transcript, then press Enter to explore.</p>}
       <form className={`mt-1 flex items-end gap-0.5 rounded-xl border bg-bg p-1 focus-within:border-dim ${recording ? "border-accent/60" : "border-line-2"}`} onSubmit={(event) => { event.preventDefault(); void submit(text); }}>
@@ -89,7 +89,7 @@ export default function CommandBar({ variant = "dock", onComplete, question, onO
       </form>
       {(err || expandError) && <p className="mt-2 text-xs text-err" role="alert">{err ?? expandError}</p>}
       {!Object.keys(concepts).length && !busy && <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs"><span className="text-dim">Try</span>{EXAMPLES.map((example) => <button key={example} type="button" onClick={() => { setText(example); setVoiceReview(false); input.current?.focus(); }} className="border border-line px-2 py-1 text-muted hover:border-dim hover:text-text">{example}</button>)}</div>}
-    </div> : dock ? <div className="shrink-0 border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5">
+    </div></div> : dock ? <div className="shrink-0 border-t border-line bg-panel px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5">
       <div className="mx-auto mb-2 max-h-[42dvh] max-w-4xl space-y-2 overflow-y-auto">{progress}</div>
       {voiceReview && <p className="mx-auto mb-2 max-w-4xl text-xs text-muted">Review your transcript, then choose Explore.</p>}
       <div className="mx-auto flex max-w-4xl items-center gap-2">

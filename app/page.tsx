@@ -11,6 +11,7 @@ import { learningPaths } from "@/lib/client/learning-paths";
 import SidePanel from "@/components/mission/SidePanel";
 import Inspector from "@/components/mission/Inspector";
 import Review from "@/components/mission/Review";
+import PanelResizer from "@/components/mission/PanelResizer";
 import MatchModal from "@/components/mission/MatchModal";
 import TimeLapse, { type TL } from "@/components/mission/TimeLapse";
 import ActivityPanel, { OperationStatus } from "@/components/activity/ActivityPanel";
@@ -26,6 +27,10 @@ import { childConceptHierarchy, conceptHierarchy, hierarchyPathKey, narrowsBranc
 
 const KnowledgeMap = dynamic(() => import("@/components/map/KnowledgeMap"), { ssr: false });
 type MapView = "question" | "knowledge" | "geomind";
+// Side panel width (desktop). The map always keeps MAP_MIN pixels so its controls still fit.
+const PANEL_KEY = "further:panel-width";
+const PANEL_DEFAULT = 400, PANEL_MIN = 320, PANEL_MAX = 1100, MAP_MIN = 380, PANEL_WIDE = 560;
+const panelMax = () => typeof window === "undefined" ? PANEL_MAX : Math.max(PANEL_MIN, Math.min(PANEL_MAX, window.innerWidth - MAP_MIN));
 const MAP_VIEWS: Array<{ id: MapView; label: string }> = [{ id: "question", label: "This question" }, { id: "knowledge", label: "My knowledge map" }, { id: "geomind", label: "Geomind" }];
 
 export default function MapScreen() {
@@ -38,6 +43,8 @@ export default function MapScreen() {
   const [knowledgePage, setKnowledgePage] = useState(0);
   const [mobile, setMobile] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT);
+  const [maxPanel, setMaxPanel] = useState(PANEL_MAX);
   const [review, setReview] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"learn" | "explain" | "sources" | undefined>(undefined);
   const [tl, setTl] = useState<TL>({ on: false, t: 0, playing: false });
@@ -90,6 +97,15 @@ export default function MapScreen() {
   const cardOpen = view === "geomind" ? Boolean(selectedPeer) : Boolean(selectedInView);
   const sheetOpen = sheet || cardOpen || review;
 
+  // Restore the saved panel width and keep it within bounds as the window changes size.
+  useEffect(() => {
+    let saved = PANEL_DEFAULT;
+    try { const value = Number(localStorage.getItem(PANEL_KEY)); if (Number.isFinite(value) && value > 0) saved = value; } catch { /* Optional layout preference. */ }
+    const clampToWindow = () => { const max = panelMax(); setMaxPanel(max); setPanelWidth(width => Math.min(max, Math.max(PANEL_MIN, width))); };
+    setPanelWidth(saved); clampToWindow();
+    window.addEventListener("resize", clampToWindow);
+    return () => window.removeEventListener("resize", clampToWindow);
+  }, []);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
     const update = () => setMobile(query.matches);
@@ -178,6 +194,13 @@ export default function MapScreen() {
     }
     dispatch({ t: "select", slug });
   };
+  const commitPanelWidth = (width: number) => {
+    setPanelWidth(width);
+    try { localStorage.setItem(PANEL_KEY, String(width)); } catch { /* Optional layout preference. */ }
+    dispatch({ t: "fit" });
+  };
+  // One click between the default and a roomy half-screen panel, for people who don't drag.
+  const togglePanelWidth = () => commitPanelWidth(panelWidth >= PANEL_WIDE ? PANEL_DEFAULT : Math.min(maxPanel, Math.max(PANEL_WIDE, Math.round(window.innerWidth * 0.5))));
   const toggleSheet = () => {
     if (cardOpen) { dispatch({ t: "select", slug: null }); setSelectedPeerId(null); setSheet(false); }
     else if (review) setReview(false);
@@ -248,8 +271,9 @@ export default function MapScreen() {
         {view !== "geomind" && !tl.on && Object.keys(concepts).length > 0 && <button className={`btn absolute bottom-3 left-3 bg-panel/90 backdrop-blur ${review ? "border-accent text-text" : ""}`} onClick={() => { setReview(open => !open); if (!review) { dispatch({ t: "select", slug: null }); setSelectedPeerId(null); } }} aria-pressed={review} title="What's slipping, this week, and where to pick up">Review</button>}
         <MatchModal />
       </section>
-      <aside className={`flex min-h-0 shrink-0 flex-col border-line bg-panel max-md:border-t md:w-[400px] md:border-l xl:w-[420px] ${mobile && sheetOpen ? (cardOpen ? "h-[80dvh]" : "h-[62dvh]") : ""}`} aria-label={view === "geomind" ? "Learner details" : "Question and concept details"}>
-        <SidePanel view={view} paths={paths} activeQuestionKey={activePath?.key} onChooseQuestion={chooseQuestion} activeSlugs={activeSlugs} showPath={view === "question" && !selectedInView && !review} onSelectTopic={(slug) => openTopic(slug)} question={activePath?.question} onComplete={finishQuestion} onOpenTopic={openTopic} extendsRunId={pathRunId} mobileSheet={mobile ? { open: sheetOpen, onToggle: toggleSheet } : undefined}>{panelBody}</SidePanel>
+      <aside style={{ "--panel-w": `${panelWidth}px` } as React.CSSProperties} className={`relative flex min-h-0 shrink-0 flex-col border-line bg-panel max-md:border-t md:w-[var(--panel-w)] md:border-l ${mobile && sheetOpen ? (cardOpen ? "h-[80dvh]" : "h-[62dvh]") : ""}`} aria-label={view === "geomind" ? "Learner details" : "Question and concept details"}>
+        <PanelResizer width={panelWidth} min={PANEL_MIN} max={maxPanel} defaultWidth={PANEL_DEFAULT} onResize={setPanelWidth} onCommit={commitPanelWidth} />
+        <SidePanel view={view} paths={paths} activeQuestionKey={activePath?.key} onChooseQuestion={chooseQuestion} activeSlugs={activeSlugs} showPath={view === "question" && !selectedInView && !review} onSelectTopic={(slug) => openTopic(slug)} question={activePath?.question} onComplete={finishQuestion} onOpenTopic={openTopic} extendsRunId={pathRunId} mobileSheet={mobile ? { open: sheetOpen, onToggle: toggleSheet } : undefined} widthControl={mobile ? undefined : { wide: panelWidth >= PANEL_WIDE, onToggle: togglePanelWidth }} wide={!mobile && panelWidth >= PANEL_WIDE}>{panelBody}</SidePanel>
       </aside>
     </div>
   </div>;
