@@ -12,7 +12,7 @@ import type { Suggestion } from "@/lib/insight";
 import { SX, SY, YOU, aggregateTopicEdges, cardWidth, exitPoint, layoutRadial, layoutSummary, type LNode, type LState, type Placed } from "@/lib/graph-layout";
 import type { KnowledgeTopicGroup } from "@/lib/knowledge-overview";
 import { liveInterest } from "@/lib/math";
-import { STATE_LABEL } from "@/lib/client/format";
+import { STATE_LABEL, relTime } from "@/lib/client/format";
 import { Head, NodeIcon, useReducedMotion } from "@/components/ui/bits";
 
 export interface KnowledgeMapProps {
@@ -37,6 +37,8 @@ export interface KnowledgeMapProps {
   overview?: { groups: KnowledgeTopicGroup[]; activeGroupId: string | null; currentGroup?: KnowledgeTopicGroup | null; showGroups?: boolean; levelKey?: string; onEnter: (id: string) => void; onExit: () => void };
   /** Space reserved for the view controls and hierarchy breadcrumb. */
   topInset?: number;
+  /** Per-concept history shown under each title: when it appeared and the latest activity. */
+  meta?: Record<string, { addedAt?: number; lastAt?: number; lastLabel?: string }>;
 }
 
 type Cam = { x: number; y: number; z: number };
@@ -529,6 +531,11 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
           const peers = peersOn.get(n.slug) ?? [];
           const pop = (fresh.current.get(n.slug) ?? 0) > now;
           const burst = bursts.filter((x) => x.slug === n.slug);
+          const meta = p.meta?.[n.slug];
+          const stateLabel = STATE_LABEL[n.state as keyof typeof STATE_LABEL];
+          // Dashed "not started" cards already read as untouched, so they show only when they appeared.
+          const history = n.state === "suggested" ? null : [meta?.lastAt !== undefined && meta.lastLabel ? `${meta.lastLabel} ${relTime(meta.lastAt, p.now)}` : meta?.addedAt !== undefined ? `Added ${relTime(meta.addedAt, p.now)}` : null, n.state === "seeded" ? null : stateLabel].filter(Boolean).join(" · ");
+          const detail = n.state === "suggested" ? sugg?.reason : [meta?.addedAt !== undefined ? `Added ${new Date(meta.addedAt).toLocaleString()}` : null, meta?.lastAt !== undefined && meta.lastLabel ? `${meta.lastLabel} ${new Date(meta.lastAt).toLocaleString()}` : "No activity yet", stateLabel].filter(Boolean).join("\n");
           return (
             <div key={n.slug} className={`kpos ${sel ? "is-selected" : ""}`} style={{ transform: `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px)`, width: b.w, height: b.h }}>
               <div className={`h-full ${pop ? "kpop" : ""}`}>
@@ -540,14 +547,15 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
                   onClick={() => p.onSelect(n.slug)}
                   onKeyDown={onKey(n.slug)}
                   onFocus={() => reveal(n.slug)}
-                  aria-label={label}
+                  aria-label={history ? `${label}. ${history}` : label}
                   aria-current={sel ? "true" : undefined}
-                  title={sugg ? sugg.reason : undefined}
+                  title={detail}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <NodeIcon state={n.state} mastery={n.mastery} size={n.state === "understood" ? 16 : 14} />
                     <span className={`min-w-0 flex-1 truncate ${n.state === "understood" ? "text-lg font-semibold" : n.state === "explored" ? "text-md font-medium" : "text-base"}`}>{title}</span>
                   </span>
+                  {history && <span className={`truncate pl-[22px] text-2xs ${n.state === "understood" ? "text-mastery/80" : "text-muted"}`}>{history}</span>}
                   {n.state === "suggested" && <span className="text-2xs text-dim">Suggested next</span>}
                 </button>
                 {peers.length > 0 && (

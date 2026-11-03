@@ -16,23 +16,26 @@ import { canUseNewRequestKey } from "./stream";
 let missionId = Date.now(); // unique across reloads (missions are persisted)
 
 /** Real agent progress and draft text stream separately from authoritative map updates. */
+/** Go deeper: extend a saved question from one concept rather than starting a new question. */
+export interface ExpandExtra { focus?: { slug: string; title: string; siblings?: string[] }; extendsRunId?: string }
+
 export function useExpand() {
   const { dispatch, say, track, concepts, nodes, events, refreshSnapshot } = useStore();
   const live = useRef({ concepts, nodes }); live.current = { concepts, nodes };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { activity, run: stream, cancel } = useAIStream();
-  const previous = useRef<{ text: string; source: Mission["source"]; key: string; id: number; retryWithNewKey: boolean } | null>(null);
-  const run = useCallback(async (text: string, source: Mission["source"], key = mutationKey(), retriedMissionId?: number) => {
+  const previous = useRef<{ text: string; source: Mission["source"]; key: string; id: number; retryWithNewKey: boolean; extra?: ExpandExtra } | null>(null);
+  const run = useCallback(async (text: string, source: Mission["source"], key = mutationKey(), retriedMissionId?: number, extra?: ExpandExtra) => {
     const retryId = retriedMissionId ?? (previous.current?.key === key ? previous.current.id : undefined);
     const id = retryId ?? missionId++;
-    previous.current = { text, source, key, id, retryWithNewKey: false };
+    previous.current = { text, source, key, id, retryWithNewKey: false, extra };
     if (retryId !== undefined) dispatch({ t: "missionPatch", id, patch: { status: "running", error: undefined } });
     else dispatch({ t: "mission", m: { id, text, source, at: Date.now(), status: "running", added: 0, reused: 0 } });
     setBusy(true); setError(null);
     try {
       const result = await stream<{ runId?: string; lines: ExpansionLine[]; persisted: boolean; mode: string }>("/api/expand", {
-        method: "POST", headers: { "idempotency-key": key }, body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary }),
+        method: "POST", headers: { "idempotency-key": key }, body: JSON.stringify({ text, mapSummary: Object.keys(live.current.nodes), learnerSummary: learnerModel(live.current.nodes, events).summary, ...extra }),
       });
       let added = 0, reused = 0;
       const slugs: string[] = [];
@@ -56,7 +59,8 @@ export function useExpand() {
           if (!live.current.nodes[slug]) await track(slug, "seed");
         }
       }
-      dispatch({ t: "missionPatch", id, patch: { runId: result.runId, status: "done", added, reused, slugs } });
+      // A deeper run extends its parent question: the refreshed snapshot grows that path, so this placeholder keeps no concepts of its own.
+      dispatch({ t: "missionPatch", id, patch: { runId: result.runId, status: "done", added, reused, slugs: extra?.extendsRunId && getDataMode() === "local" ? [] : slugs } });
       if (getDataMode() === "local") await refreshSnapshot();
       say("EXPAND", `Validated map result: ${added} added, ${reused} reused`, "ok", result.mode === "fixture" || result.mode === "demo");
       return true;
@@ -71,10 +75,10 @@ export function useExpand() {
   const retry = useCallback(async () => {
     const attempt = previous.current;
     if (!attempt) return false;
-    const restored = await run(attempt.text, attempt.source, attempt.retryWithNewKey ? mutationKey() : attempt.key, attempt.id);
+    const restored = await run(attempt.text, attempt.source, attempt.retryWithNewKey ? mutationKey() : attempt.key, attempt.id, attempt.extra);
     // An unknown disconnect first checks the old key. If the server confirms
     // failure before saving, this Retry click may safely make one new attempt.
-    if (!restored && !attempt.retryWithNewKey && previous.current?.id === attempt.id && previous.current.retryWithNewKey) return run(attempt.text, attempt.source, mutationKey(), attempt.id);
+    if (!restored && !attempt.retryWithNewKey && previous.current?.id === attempt.id && previous.current.retryWithNewKey) return run(attempt.text, attempt.source, mutationKey(), attempt.id, attempt.extra);
     return restored;
   }, [run]);
   return { run, busy, error, activity, cancel, retry };

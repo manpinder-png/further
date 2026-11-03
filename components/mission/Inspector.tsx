@@ -9,8 +9,9 @@ import { mutationKey } from "@/domains/ui/contracts";
 import { useAIStream } from "@/lib/client/useAIStream";
 import ActivityPanel from "@/components/activity/ActivityPanel";
 import Mermaid from "@/components/ui/Mermaid";
-import { STATE_LABEL, personName } from "@/lib/client/format";
+import { STATE_LABEL, personName, plural, relTime } from "@/lib/client/format";
 import { explanationFor } from "@/lib/client/learning-paths";
+import { explanationAttempts } from "@/lib/review";
 import type { NodeState, Resource } from "@/lib/types";
 
 interface Card { slug: string; title: string; hook: string[]; resource: Resource | null; diagram: string | null; cached: boolean; demo: boolean }
@@ -24,20 +25,20 @@ const ytId = (url: string) => url.match(/(?:v=|youtu\.be\/)([\w-]{11})/)?.[1];
 export function StateBadge({ state }: { state: NodeState }) { return <span className={`chip ${state === "understood" ? "chip-success" : ""}`}>{STATE_LABEL[state]}</span>; }
 
 type Tab = "learn" | "explain" | "sources";
-type InspectorProps = { slug?: string | null; activeSlugs?: readonly string[]; onClose?: () => void; nextTopic?: { slug: string; title: string }; onNext?: (slug: string) => void; onPathCreated?: () => void };
+type InspectorProps = { slug?: string | null; activeSlugs?: readonly string[]; onClose?: () => void; nextTopic?: { slug: string; title: string }; onNext?: (slug: string) => void; onPathCreated?: () => void; /** The saved question run this concept belongs to; enables Go deeper. */ pathRunId?: string; /** Open on a specific activity, e.g. Review's Explain again. */ initialTab?: Tab };
 export default function Inspector(props: InspectorProps) {
   const { selected } = useStore();
   const slug = props.slug === undefined ? selected : props.slug;
   return <InspectorContent key={slug ?? "map-summary"} {...props} slug={slug} />;
 }
-function InspectorContent({ slug, activeSlugs, onClose, nextTopic, onNext, onPathCreated }: InspectorProps) {
-  const { concepts, nodes, track, dispatch, peerNames } = useStore();
+function InspectorContent({ slug, activeSlugs, onClose, nextTopic, onNext, onPathCreated, pathRunId, initialTab }: InspectorProps) {
+  const { concepts, nodes, edges, track, dispatch, peerNames, dataMode } = useStore();
   const selected = slug ?? null;
   const concept = selected ? concepts[selected] : null;
   const node = selected ? nodes[selected] : null;
   const hasConcept = Boolean(concept);
   const lastOpened = useRef<string | null>(null);
-  const [tab, setTab] = useState<Tab>("learn");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "learn");
   const [card, setCard] = useState<Card | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -59,10 +60,14 @@ function InspectorContent({ slug, activeSlugs, onClose, nextTopic, onNext, onPat
   const branch = async (question: string) => { if (await expand(question, "text")) onPathCreated?.(); };
   if (!concept || !node) return <MapSummary activeSlugs={activeSlugs} />;
   const close = () => { dispatch({ t: "select", slug: null }); onClose?.(); };
+  // Go deeper keeps the learner inside this question: new concepts attach under this one and join the same path.
+  const canDeepen = Boolean(pathRunId) && dataMode === "local";
+  const deepened = edges.some(edge => edge.src === concept.slug && edge.dst !== concept.slug && (!activeSlugs || activeSlugs.includes(edge.dst)));
+  const deeper = () => { void expand(`Go deeper: ${concept.title}`, "text", undefined, undefined, { focus: { slug: concept.slug, title: concept.title, siblings: activeSlugs ? [...activeSlugs] : [] }, extendsRunId: pathRunId }); };
   return <article className="flex h-full min-h-0 flex-col">
     <header className="shrink-0 border-b border-line">
-      <div className="flex h-10 items-center justify-between border-b border-line pl-4 pr-1"><h2 className="label">Concept</h2><button className="btn btn-icon btn-ghost min-h-9 border-transparent text-muted" onClick={close} aria-label="Close concept card" title="Close (Esc)"><CloseIcon /></button></div>
-      <div className="px-4 py-3"><div className="flex items-start gap-3"><NodeIcon state={node.state} mastery={node.mastery} slug={concept.slug} size={36} /><div className="min-w-0"><h3 className="text-xl font-semibold leading-snug">{concept.title}</h3><div className="mt-1.5 flex flex-wrap items-center gap-2"><StateBadge state={node.state} />{node.learnedWith && <span className="text-xs text-muted">Discussed with {personName(node.learnedWith, peerNames)}</span>}</div></div></div>{concept.hook && <p className="mt-3 text-sm leading-relaxed text-muted">{concept.hook}</p>}</div>
+      {/* One compact header row: the lesson below needs the height more than a second title bar does. */}
+      <div className="flex items-start gap-3 py-2.5 pl-4 pr-1"><NodeIcon state={node.state} mastery={node.mastery} slug={concept.slug} size={28} /><div className="min-w-0 flex-1"><h2 className="text-base font-semibold leading-snug">{concept.title}</h2><div className="mt-1 flex flex-wrap items-center gap-2"><StateBadge state={node.state} />{node.learnedWith && <span className="text-xs text-muted">Discussed with {personName(node.learnedWith, peerNames)}</span>}{canDeepen && <button type="button" className="btn min-h-7 px-2 py-0.5 text-xs" onClick={deeper} disabled={branchActivity.status === "running"} title={deepened ? "Add another layer of concepts under this one" : "Add 3–5 new concepts under this one, in this question"}>{branchActivity.status === "running" ? "Adding…" : deepened ? "Explore further" : "Go deeper"}</button>}</div>{concept.hook && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted" title={concept.hook}>{concept.hook}</p>}</div><button className="btn btn-icon btn-ghost min-h-9 shrink-0 border-transparent text-muted" onClick={close} aria-label="Close concept card" title="Close (Esc)"><CloseIcon /></button></div>
       <div className="flex gap-4 px-4" role="tablist" aria-label="Topic activities">{([["learn", "Learn"], ["explain", "Try explaining"], ["sources", "Sources"]] as const).map(([id, label]) => <button key={id} role="tab" id={`activity-${id}`} aria-selected={tab === id} aria-controls="topic-activity" onClick={() => setTab(id)} className={`whitespace-nowrap border-b-2 pb-2 text-xs ${tab === id ? "border-accent text-text" : "border-transparent text-muted hover:text-text"}`}>{label}</button>)}</div>
     </header>
     <div className="scroll min-h-0 flex-1 py-1" id="topic-activity" role="tabpanel" aria-labelledby={`activity-${tab}`}>
@@ -190,6 +195,7 @@ function Diagram({ code, title }: { code: string; title: string }) {
 function ExplainBack({ slug, title }: { slug: string; title: string }) {
   const { track, events, refreshSnapshot, dataMode } = useStore();
   const previous = explanationFor(slug, events);
+  const attempts = explanationAttempts(slug, events);
   const [typed, setTyped] = useState("");
   const [result, setResult] = useState<{ transcript: string; score: number | null; feedback: string; demo: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +231,7 @@ function ExplainBack({ slug, title }: { slug: string; title: string }) {
   const shownFeedback = !editing ? result?.feedback ?? savedFeedback : null;
   return <section className="px-4 py-3">
     <h3 className="text-lg font-medium">Put it in your own words.</h3><p className="mt-2 text-sm leading-relaxed text-muted">How would you explain {title.toLowerCase()} to a friend? Include an example or a limit. Your guide will point out what is clear and what to revisit.</p>
+    {attempts.length > 0 && <details className="mt-4 rounded-md border border-line bg-panel-2 px-3 py-2"><summary className="cursor-pointer text-xs text-muted">{plural(attempts.length, "earlier explanation")} · {attempts.length > 1 ? `first ${relTime(attempts[0].at)}, latest ${relTime(attempts[attempts.length - 1].at)}` : relTime(attempts[0].at)}</summary><ol className="mt-3 space-y-3">{attempts.map((attempt, index) => <li key={attempt.at} className="text-xs"><p className="flex items-center gap-2 text-muted"><span className="flex gap-0.5" aria-label={`Attempt ${index + 1}`}>{[1, 2, 3].map(level => <span key={level} className={`h-1.5 w-3 rounded-sm ${attempt.score >= level ? "bg-mastery" : "bg-line-2"}`} aria-hidden />)}</span><span>Attempt {index + 1} · {new Date(attempt.at).toLocaleDateString([], { month: "short", day: "numeric" })}</span></p>{attempt.feedback && <p className="mt-1 whitespace-pre-line leading-relaxed text-text/85">{attempt.feedback}</p>}</li>)}</ol><p className="mt-3 text-2xs text-dim">The bars show how complete each explanation was judged, as a prompt for practice rather than a grade.</p></details>}
     {shownFeedback ? <div className="mt-4 rounded-lg border border-mastery/30 bg-mastery-soft/40 p-3" aria-live="polite"><p className="text-xs font-medium text-mastery">{result?.demo ? "Sample feedback" : "Your explanation was reviewed"}</p><p className="mt-3 whitespace-pre-line text-sm leading-relaxed">{shownFeedback}</p>{result?.transcript && <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">Your explanation</summary><p className="mt-2 whitespace-pre-wrap text-sm text-muted">{result.transcript}</p></details>}<p className="mt-4 text-xs text-muted">AI feedback is one perspective, not a validated assessment of mastery.</p><button className="btn btn-ghost mt-4" onClick={() => setEditing(true)}>Try another example</button></div> : <form className="mt-5" onSubmit={(event) => { event.preventDefault(); void grade(typed.trim()); }}><label className="sr-only" htmlFor="explain-input">Explain {title} in your own words</label><textarea id="explain-input" value={typed} onChange={(event) => setTyped(event.target.value)} maxLength={3000} rows={4} disabled={grading || rec.state === "recording"} placeholder="The way I understand it is…" className="field rounded-md p-3 text-sm leading-relaxed" /><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><button type="button" className={`btn btn-ghost ${rec.state === "recording" ? "text-accent" : "text-muted"}`} onClick={() => void mic()} disabled={rec.state === "processing" || grading}>{rec.state === "recording" ? `■ Stop · ${Math.floor(rec.elapsed / 1000)}s` : rec.state === "processing" ? "Transcribing…" : "Use your voice"}</button><button className="btn btn-primary rounded-lg" disabled={grading || rec.state !== "idle" || typed.trim().length < 5}>{grading ? "Reading your explanation…" : "Get feedback"}</button></div><p className="mt-2 text-xs text-muted">Voice recordings are transcribed after you stop. Review the text before submitting.</p></form>}
     <div className="mt-5 space-y-3"><ActivityPanel activity={voice.activity} title="Transcribing your explanation" onCancel={voice.cancel} onRetry={() => { if (lastAudio.current) void processVoice(lastAudio.current); }} compact /><ActivityPanel activity={feedback.activity} title="Reviewing your explanation" onCancel={feedback.cancel} onRetry={() => void grade(lastExplanation.current)} compact /></div>
     {error && <p className="mt-3 text-sm text-err" role="alert">{error}</p>}

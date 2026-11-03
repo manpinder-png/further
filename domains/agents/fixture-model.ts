@@ -16,6 +16,9 @@ export class FixtureAgentModel implements AgentModel {
     const input = inputFrom(request);
     const text = String(input.text ?? input.concept ?? "A learning topic");
     const title = words(text);
+    // A go-deeper rehearsal attaches its concepts under the focused concept, like the live agent.
+    const focus = input.focus as { slug?: unknown } | undefined;
+    const focusSlug = typeof focus?.slug === "string" ? focus.slug : null;
     if (request.agentId === "metadata") return response({
       intent: title, goals: ["Explore this question"], concepts: [{ slug: slug(title), title, confidence: 0.3 }],
       experience: "unknown", language: null, availableMinutes: null, participation: "unknown",
@@ -35,7 +38,13 @@ export class FixtureAgentModel implements AgentModel {
         const saved = map.concepts ?? [];
         return response({ intent: "Your saved topics", root: saved[0]?.slug ?? "empty", rootTitle: saved[0]?.title ?? "Your saved topics", concepts: [], groups: saved.length ? [{ id: "saved-topics", title: "Saved topics · rehearsal", summary: "Offline rehearsal groups all supplied topics together. A real Meta model is needed to organize them by meaning.", conceptSlugs: saved.map(concept => concept.slug) }] : [], explanation: "Explicit offline rehearsal. No model organized these topics or inferred understanding.", recommendedPeerIds: [], nextActions: [] });
       }
-      const concepts = [
+      const focusTitle = typeof (input.focus as { title?: unknown } | undefined)?.title === "string" ? String((input.focus as { title: string }).title) : null;
+      // Going deeper attaches distinct children under the focused concept; a fresh question starts from its own root.
+      const concepts = focusSlug && focusTitle ? [
+        { slug: slug(focusTitle + " key parts"), title: `${focusTitle}: key parts`, hook: "Name the pieces and what each one is responsible for.", difficulty: 0.3, edge: { from: focusSlug, kind: "part_of" } },
+        { slug: slug(focusTitle + " mechanism"), title: `${focusTitle}: how it works`, hook: "Follow one pass through the mechanism step by step.", difficulty: 0.4, edge: { from: focusSlug, kind: "part_of" } },
+        { slug: slug(focusTitle + " deeper example"), title: `${focusTitle}: a harder example`, hook: "Change one input and predict what happens.", difficulty: 0.5, edge: { from: focusSlug, kind: "related" } },
+      ] : [
         { slug: slug(title), title, hook: "Start with the question you brought.", difficulty: 0.2 },
         { slug: slug(title + " foundations"), title: "Foundations", hook: "Identify the parts and what each one does.", difficulty: 0.3, edge: { from: slug(title), kind: "part_of" } },
         { slug: slug(title + " examples"), title: "A worked example", hook: "Explain one small example in your own words.", difficulty: 0.4, edge: { from: slug(title), kind: "related" } },

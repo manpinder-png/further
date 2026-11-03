@@ -173,6 +173,12 @@ export async function invokeAgent<I extends AgentId>(actorId: string, agentId: I
           const byTitle=new Map(globalConcepts.map(c=>[c.title.toLowerCase().trim(),c]));
           const aliases=new Map(data.concepts.map(c=>[c.slug,byTitle.get(c.title.toLowerCase().trim())?.slug??c.slug]));
           data.concepts=data.concepts.map(c=>({...c,slug:aliases.get(c.slug)!,edge:c.edge?{...c.edge,from:aliases.get(c.edge.from)??c.edge.from}:undefined}));
+          // Going deeper: the focused concept is the parent. A proposal that re-adds it (by title alias) would make it a child of its own children, so it is dropped and its children re-attach to the focus.
+          const focus=(parsed as {focus?:{slug:string}}).focus;
+          if(focus){
+            const dropped=new Set(data.concepts.filter(c=>c.slug===focus.slug).map(c=>c.slug));
+            data.concepts=data.concepts.filter(c=>c.slug!==focus.slug).map(c=>c.edge&&dropped.has(c.edge.from)?{...c,edge:{...c.edge,from:focus.slug}}:c);
+          }
           data.root=aliases.get(data.root)??data.concepts[0]?.slug??data.root;
           const concepts:Concept[]=data.concepts.map(c=>({...c,domain:"general",difficulty:Math.max(1,Math.round(c.difficulty*4+1))}));
           const edges:Edge[]=data.concepts.flatMap(c=>c.edge?[{src:c.edge.from,dst:c.slug,kind:c.edge.kind}]:[]);

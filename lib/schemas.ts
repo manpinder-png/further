@@ -15,6 +15,10 @@ export const ExpandRequest = z.object({
   mapSummary: z.array(slug).max(200).default([]),
   /** How this learner learns (lib/learn.ts) — Muse builds future nodes from it. */
   learnerSummary: z.string().max(600).default(""),
+  /** Go deeper: extend a saved question from one of its concepts instead of starting a new question. */
+  focus: z.object({ slug, title: z.string().trim().min(1).max(150), siblings: z.array(slug).max(60).default([]) }).optional(),
+  /** The saved question run this expansion extends; its path grows in place. */
+  extendsRunId: z.string().trim().min(1).max(80).optional(),
 });
 
 // Raw model output, one JSON object per line. Invalid lines are dropped (plan §9).

@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-02T21:04:35.430Z",
+  "generatedAt": "2026-11-03T00:38:28.286Z",
   "generator": "scripts/dependency-map.mjs",
-  "sourceFiles": 149,
-  "localImports": 465,
+  "sourceFiles": 150,
+  "localImports": 466,
   "domains": [
     {
       "id": "ui",
-      "fileCount": 45
+      "fileCount": 46
     },
     {
       "id": "backend",
@@ -58,7 +58,7 @@
     {
       "from": "ui",
       "to": "shared",
-      "count": 49
+      "count": 48
     },
     {
       "from": "ui",
@@ -160,10 +160,11 @@
     "components/mission/AgentAssistant.tsx",
     "components/mission/CommandBar.tsx",
     "components/mission/GeomindInspector.tsx",
+    "components/mission/History.tsx",
     "components/mission/Inspector.tsx",
     "components/mission/KnowledgeOverviewInspector.tsx",
-    "components/mission/LeftRail.tsx",
     "components/mission/MatchModal.tsx",
+    "components/mission/SidePanel.tsx",
     "components/mission/TimeLapse.tsx",
     "components/shell/TopBar.tsx",
     "components/ui/Mermaid.tsx",
@@ -1240,17 +1241,12 @@
     },
     {
       "from": "app/page.tsx",
-      "to": "components/mission/LeftRail.tsx",
+      "to": "components/mission/SidePanel.tsx",
       "typeOnly": false
     },
     {
       "from": "app/page.tsx",
       "to": "components/mission/Inspector.tsx",
-      "typeOnly": false
-    },
-    {
-      "from": "app/page.tsx",
-      "to": "components/mission/CommandBar.tsx",
       "typeOnly": false
     },
     {
@@ -1321,6 +1317,11 @@
     {
       "from": "app/profile/page.tsx",
       "to": "components/builder/LocalIdentity.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "components/mission/History.tsx",
       "typeOnly": false
     },
     {
@@ -1654,6 +1655,26 @@
       "typeOnly": false
     },
     {
+      "from": "components/mission/History.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/History.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/History.tsx",
+      "to": "lib/demo/seed.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/History.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
       "from": "components/mission/Inspector.tsx",
       "to": "lib/client/store.tsx",
       "typeOnly": false
@@ -1724,51 +1745,6 @@
       "typeOnly": true
     },
     {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/client/store.tsx",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "components/ui/bits.tsx",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/demo/seed.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/client/format.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/client/learning-paths.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/client/hooks.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "lib/builder.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "components/builder/AgentLog.tsx",
-      "typeOnly": false
-    },
-    {
-      "from": "components/mission/LeftRail.tsx",
-      "to": "components/activity/ActivityPanel.tsx",
-      "typeOnly": false
-    },
-    {
       "from": "components/mission/MatchModal.tsx",
       "to": "lib/client/store.tsx",
       "typeOnly": false
@@ -1801,6 +1777,36 @@
     {
       "from": "components/mission/MatchModal.tsx",
       "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "lib/client/learning-paths.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "lib/client/hooks.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/SidePanel.tsx",
+      "to": "components/mission/CommandBar.tsx",
       "typeOnly": false
     },
     {

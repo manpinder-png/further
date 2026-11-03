@@ -1,6 +1,6 @@
 # Further architecture — v2
 
-Further turns a rough question into a personal learning map, then helps willing, available people learn together. The v2 handoff preserves the v1 map/inspector/dock layout and adds topic navigation, semantic peer discovery and shared AWS persistence. Start with [onboarding](ONBOARDING.md); use the [code map](CODE_MAP.md) to find an implementation.
+Further turns a rough question into a personal learning map, then helps willing, available people learn together. The workspace is a full-screen radial map with one side panel (question switcher, path or open card, progress line, composer); learning history lives on Profile. v2 adds topic navigation, semantic peer discovery and shared AWS persistence. Start with [onboarding](ONBOARDING.md); use the [code map](CODE_MAP.md) to find an implementation.
 
 ## Where it runs
 

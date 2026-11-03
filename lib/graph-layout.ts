@@ -20,9 +20,10 @@ export interface Placed { x: number; y: number; w: number; h: number }
 export interface Ring { r: number; label: string }
 
 export const CARD: Record<LState, { w: number; h: number; min: number; max: number; char: number; extra: number }> = {
-  understood: { w: 190, h: 54, min: 150, max: 260, char: 10, extra: 88 },
-  explored: { w: 170, h: 50, min: 130, max: 240, char: 9, extra: 54 },
-  seeded: { w: 150, h: 38, min: 110, max: 220, char: 8.2, extra: 50 },
+  // Heights leave room for the one-line history under each title (added · last activity · state).
+  understood: { w: 190, h: 68, min: 170, max: 260, char: 10, extra: 88 },
+  explored: { w: 170, h: 64, min: 160, max: 240, char: 9, extra: 54 },
+  seeded: { w: 150, h: 54, min: 150, max: 220, char: 8.2, extra: 50 },
   suggested: { w: 160, h: 46, min: 130, max: 230, char: 8.2, extra: 50 },
 };
 /** Card width that fits the title on one line. */

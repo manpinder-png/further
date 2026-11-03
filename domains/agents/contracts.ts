@@ -45,6 +45,10 @@ export const MetadataOutput = z.object({
 export const KnowledgeMapInput = z.object({
   text: long,
   objective: z.enum(["expand", "recommend", "plan", "summarize"]).default("expand"),
+  /** Present when the learner goes deeper into one saved concept. New concepts attach under focus.slug. */
+  focus: z.object({ slug: z.string().min(1).max(80), title: z.string().min(1).max(150), siblings: z.array(z.string().min(1).max(80)).max(60).default([]) }).optional(),
+  /** The saved question this expansion extends. Bootstrap merges the result into that question's path. */
+  extendsRunId: z.string().min(1).max(80).optional(),
 });
 export const KnowledgeOverviewGroupSchema = z.object({
   id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80),

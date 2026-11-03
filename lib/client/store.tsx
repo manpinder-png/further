@@ -56,8 +56,6 @@ interface State {
   sessions: SessionResult[];
   notes: Note[];
   fitKey: number;
-  /** Left-pane drawer (phones). */
-  rail: boolean;
   /** Suggested topics the learner said "not now" to. */
   dismissed: string[];
 }
@@ -84,7 +82,6 @@ type Action =
   | { t: "status"; s: SystemStatus }
   | { t: "session"; r: SessionResult }
   | { t: "note"; text: string }
-  | { t: "rail"; open: boolean }
   | { t: "dismiss"; slug: string }
   | { t: "fit" };
 
@@ -133,7 +130,6 @@ const initial: State = {
   sessions: [],
   notes: [],
   fitKey: 0,
-  rail: false,
   dismissed: [],
 };
 
@@ -243,8 +239,6 @@ function reducer(s: State, a: Action): State {
       return { ...s, sessions: [a.r, ...s.sessions] };
     case "note":
       return { ...s, notes: [...s.notes.slice(-49), { at: Date.now(), text: a.text }] };
-    case "rail":
-      return { ...s, rail: a.open };
     case "dismiss":
       return s.dismissed.includes(a.slug) ? s : { ...s, dismissed: [...s.dismissed, a.slug] };
     case "fit":

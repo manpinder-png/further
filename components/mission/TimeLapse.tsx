@@ -8,7 +8,7 @@ export interface TL { on: boolean; t: number; playing: boolean }
 export const TL_MS = 10_000;
 const DAY = 86_400_000;
 
-export default function TimeLapse({ start, end, tl, setTl, counts }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void; counts?: string }) {
+export default function TimeLapse({ start, end, tl, setTl, counts, hideButton = false }: { start: number; end: number; tl: TL; setTl: (f: (p: TL) => TL) => void; counts?: string; /** The Review panel owns the entry point; only the scrubber renders here. */ hideButton?: boolean }) {
   const raf = useRef(0);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -38,6 +38,7 @@ export default function TimeLapse({ start, end, tl, setTl, counts }: { start: nu
   const day = Math.min(days, Math.floor((tl.t - start) / DAY) + 1);
   const frac = (tl.t - start) / Math.max(1, end - start);
 
+  if (!tl.on && hideButton) return null;
   if (!tl.on)
     return (
       <button className="btn absolute bottom-3 left-3 bg-panel/90 backdrop-blur" onClick={() => setTl(() => ({ on: true, t: start, playing: true }))}>
