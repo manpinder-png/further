@@ -39,6 +39,15 @@ export interface KnowledgeMapProps {
   topInset?: number;
   /** Per-concept history shown under each title: when it appeared and the latest activity. */
   meta?: Record<string, { addedAt?: number; lastAt?: number; lastLabel?: string }>;
+  completionCounts?: Record<string, number> | null;
+}
+
+function CompletionBadge({ count }: { count: number | undefined }) {
+  if (count === undefined) return null;
+  return <span className="inline-flex shrink-0 items-center gap-1 rounded border border-mastery/30 bg-mastery/10 px-1.5 py-0.5 text-[10px] leading-none text-mastery" title={`Completed by ${count} ${count === 1 ? "learner" : "learners"}: 3/3 explain-back for every concept. AI-reviewed evidence, not certified mastery.`}>
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden><path d="m2 6 2.5 2.5L10 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    <span>{count.toLocaleString()}</span>
+  </span>;
 }
 
 type Cam = { x: number; y: number; z: number };
@@ -501,13 +510,14 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
 
         {/* Current question, or you in the full-map overview. */}
         <div className="kpos" style={{ transform: `translate(${-YOU.w / 2}px, ${-YOU.h / 2}px)` }}>
-          <button data-card className="kyou" onClick={() => { if (activeGroup) exitGroup(); else { userMoved.current = 0; fit(true); } }} aria-label={activeGroup ? `${activeGroup.title}. ${topicCount}. Back one level` : `${p.focus ? `This question: ${p.focus.title}. ${topicCount}` : p.you.name}. Fit the map to your topics`} title={activeGroup ? `${activeGroup.title} · Back one level` : p.focus?.title ?? "Fit the map to your topics"}>
+          <button data-card className="kyou" onClick={() => { if (activeGroup) exitGroup(); else { userMoved.current = 0; fit(true); } }} aria-label={activeGroup ? `${activeGroup.title}. ${topicCount}${p.completionCounts?.["current-topic"] === undefined ? "" : `. Completed by ${p.completionCounts["current-topic"]} learners`}. Back one level` : `${p.focus ? `This question: ${p.focus.title}. ${topicCount}` : p.you.name}. Fit the map to your topics`} title={activeGroup ? `${activeGroup.title} · Back one level` : p.focus?.title ?? "Fit the map to your topics"}>
             <svg viewBox="0 0 116 116" className="absolute inset-0 -rotate-90" aria-hidden>
               <circle cx="58" cy="58" r="54" fill="none" stroke="#35353e" strokeWidth="2" />
             </svg>
             <span className="text-xs text-muted">{activeGroup ? activeGroup.anchorSlug ? "Concept" : "Topic" : p.focus ? "This question" : "You"}</span>
             <span className={`display max-w-[96px] break-words leading-tight ${scopedCenter ? "mt-1 line-clamp-2 text-sm" : "truncate text-lg"}`}>{centerTitle}</span>
             {(!p.focus || centerTitle !== topicCount) && <span className="mt-1 text-2xs text-muted">{inOverview ? `${groups.length} ${activeGroup ? "subtopics" : "topics"}` : scopedCenter ? topicCount : "All topics"}</span>}
+            {activeGroup && <span className="mt-1"><CompletionBadge count={p.completionCounts?.["current-topic"]} /></span>}
           </button>
         </div>
 
@@ -516,7 +526,8 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
           const id = `group:${group.id}`, b = P(id);
           if (!b) return null;
           const connected = summaryLinks.filter(link => link.src === group.id || link.dst === group.id).length;
-          return <div key={id} className="kpos" style={{ transform: `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px)`, width: b.w, height: b.h }}><button data-card className="kcard border-line-2 bg-panel shadow-[0_6px_24px_-10px_rgba(0,0,0,.8)]" style={{ padding: "12px 14px" }} ref={element => { if (element) btns.current.set(id, element); else btns.current.delete(id); }} onClick={() => enterGroup(group.id)} onKeyDown={onKey(id)} onFocus={() => reveal(id)} aria-label={`${group.title}, ${group.conceptSlugs.length} concepts${connected ? `, connected to ${connected} other topics` : ""}. Expand topic`} title={group.summary}><span className="flex items-start gap-2.5"><svg className="mt-0.5 shrink-0 text-accent" width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden><rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="12" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="7" y="12" width="6" height="6" rx="1.5" stroke="currentColor" /><path d="M5 8v2h10V8M10 10v2" stroke="currentColor" /></svg><span className="min-w-0 flex-1 line-clamp-2 text-base font-medium leading-snug">{group.title}</span><span className="text-muted" aria-hidden>↗</span></span><span className="mt-1 pl-[28px] text-xs text-muted">{group.conceptSlugs.length} {group.conceptSlugs.length === 1 ? "concept" : "concepts"} · {group.children?.length ? `${group.children.length} subtopics` : "Explore"}</span></button></div>;
+          const completed = p.completionCounts?.[`topic:${group.id}`];
+          return <div key={id} className="kpos" style={{ transform: `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px)`, width: b.w, height: b.h }}><button data-card className="kcard border-line-2 bg-panel shadow-[0_6px_24px_-10px_rgba(0,0,0,.8)]" style={{ padding: "12px 14px" }} ref={element => { if (element) btns.current.set(id, element); else btns.current.delete(id); }} onClick={() => enterGroup(group.id)} onKeyDown={onKey(id)} onFocus={() => reveal(id)} aria-label={`${group.title}, ${group.conceptSlugs.length} concepts${connected ? `, connected to ${connected} other topics` : ""}${completed === undefined ? "" : `, completed by ${completed} learners`}. Expand topic`} title={group.summary}><span className="flex items-start gap-2.5"><svg className="mt-0.5 shrink-0 text-accent" width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden><rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="12" y="2" width="6" height="6" rx="1.5" stroke="currentColor" /><rect x="7" y="12" width="6" height="6" rx="1.5" stroke="currentColor" /><path d="M5 8v2h10V8M10 10v2" stroke="currentColor" /></svg><span className="min-w-0 flex-1 line-clamp-2 text-base font-medium leading-snug">{group.title}</span><CompletionBadge count={completed} /><span className="text-muted" aria-hidden>↗</span></span><span className="mt-1 pl-[28px] text-xs text-muted">{group.conceptSlugs.length} {group.conceptSlugs.length === 1 ? "concept" : "concepts"} · {group.children?.length ? `${group.children.length} subtopics` : "Explore"}</span></button></div>;
         })}
 
         {/* Topics */}
@@ -524,6 +535,7 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
           const b = P(n.slug);
           if (!b) return null;
           const title = titles.get(n.slug) ?? n.slug;
+          const completed = p.completionCounts?.[`concept:${n.slug}`];
           const sel = p.selected === n.slug;
           const opacity = n.state === "understood" ? 1 : n.state === "suggested" ? 0.88 : 0.96;
           const sugg = n.state === "suggested" ? suggestions.find((s) => s.slug === n.slug) : undefined;
@@ -547,13 +559,14 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
                   onClick={() => p.onSelect(n.slug)}
                   onKeyDown={onKey(n.slug)}
                   onFocus={() => reveal(n.slug)}
-                  aria-label={history ? `${label}. ${history}` : label}
+                  aria-label={`${history ? `${label}. ${history}` : label}${completed === undefined ? "" : `. Completed by ${completed} learners`}`}
                   aria-current={sel ? "true" : undefined}
                   title={detail}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <NodeIcon state={n.state} mastery={n.mastery} size={n.state === "understood" ? 16 : 14} />
                     <span className={`min-w-0 flex-1 truncate ${n.state === "understood" ? "text-lg font-semibold" : n.state === "explored" ? "text-md font-medium" : "text-base"}`}>{title}</span>
+                    <CompletionBadge count={completed} />
                   </span>
                   {history && <span className={`truncate pl-[22px] text-2xs ${n.state === "understood" ? "text-mastery/80" : "text-muted"}`}>{history}</span>}
                   {n.state === "suggested" && <span className="text-2xs text-dim">Suggested next</span>}
@@ -586,4 +599,3 @@ export default function KnowledgeMap(p: KnowledgeMapProps) {
     </div>
   );
 }
-

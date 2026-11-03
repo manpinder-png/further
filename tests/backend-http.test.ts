@@ -111,6 +111,10 @@ test("HTTP local journey: independent identities, durable maps and genuine share
     assert.equal((await bob.request("/api/data/events","POST",{slug:privateSlug,kind:"watch"})).status,404);
     assert.equal((await alice.request("/api/data/events","POST",{slug:shared,kind:"session"})).status,400);
     assert.equal((await alice.request("/api/data/events","POST",{slug:shared,kind:"explain",payload:{score:3}})).status,400);
+    const completionScopes={scopes:[{id:"shared",conceptSlugs:[shared]},{id:"topic",conceptSlugs:[shared,privateSlug]}]};
+    assert.deepEqual(await alice.ok("/api/data/completions","POST",completionScopes),{counts:{shared:0,topic:0}});
+    assert.equal((await anonymous.request("/api/data/completions","POST",completionScopes)).status,401);
+    assert.equal((await bob.request("/api/data/completions","POST",completionScopes)).status,404);
   });
 
   await step("saved concepts become searchable through the real asynchronous local index",async()=>{
@@ -279,4 +283,34 @@ test("HTTP saved map runs restore quest history without another model request",{
   assert.equal(restored.missions[0].status,"done");assert.equal(restored.missions[0].text,"Understand database indexes");
   assert.deepEqual(restored.missions[0].slugs,result.data.concepts.map(c=>c.slug));
   assert.deepEqual((await outsider.ok<WithMissions>("/api/data/bootstrap")).missions,[]);
+});
+
+test("HTTP map reset clears saved learning durably, preserves profile and peers, and cannot repeat over new learning", { skip: !base, timeout: 120_000 }, async () => {
+  const health = await (await fetch(base! + "/api/health")).json() as { modelMode?: string };
+  assert.equal(health.modelMode, "fixture");
+  const owner = new Client(), peer = new Client(), reloaded = new Client(), tag = randomUUID().slice(0, 8);
+  await owner.ok("/api/local/identity", "POST", { displayName: `Reset owner ${tag}` });
+  await peer.ok("/api/local/identity", "POST", { displayName: `Reset peer ${tag}` });
+  const topic = { slug: `reset-http-${tag}`, title: "Reset HTTP test topic", hook: "Synthetic learning", domain: "ai-tech" };
+  await owner.ok("/api/data/concepts", "POST", { concept: topic });
+  await peer.ok("/api/data/concepts", "POST", { concept: topic });
+  await owner.ok("/api/agents/knowledge-map", "POST", { input: { text: "Understand database indexes", objective: "expand" }, idempotencyKey: `reset-question-${tag}` });
+  const before = await owner.ok<Bootstrap & { missions: unknown[] }>("/api/data/bootstrap");
+  assert.ok(before.missions.length);
+  const payload = { confirmation: "RESET", idempotencyKey: `reset-${tag}` };
+  assert.equal((await owner.request("/api/data/reset", "POST", { idempotencyKey: payload.idempotencyKey })).status, 400);
+  await owner.ok("/api/data/reset", "POST", payload);
+  reloaded.cookie = owner.cookie;
+  const empty = await reloaded.ok<Bootstrap & { missions: unknown[] }>("/api/data/bootstrap");
+  assert.deepEqual(empty.concepts, []);
+  assert.deepEqual(empty.edges, []);
+  assert.deepEqual(empty.events, []);
+  assert.deepEqual(empty.metadata, []);
+  assert.deepEqual(empty.missions, []);
+  assert.deepEqual(empty.profile, before.profile);
+  assert.equal((await peer.ok<Bootstrap>("/api/data/bootstrap")).concepts.length, 1);
+  assert.equal((await owner.request("/api/data/events", "POST", { slug: topic.slug, kind: "open", idempotencyKey: `late-${tag}` })).status, 404);
+  await owner.ok("/api/data/concepts", "POST", { concept: topic });
+  await owner.ok("/api/data/reset", "POST", payload);
+  assert.equal((await reloaded.ok<Bootstrap>("/api/data/bootstrap")).concepts.length, 1);
 });

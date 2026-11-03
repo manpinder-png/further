@@ -10,6 +10,7 @@ All protected routes resolve the actor server-side through `domains/backend/iden
 |---|---|---|---|
 | Sign up / sign in / account | `/api/auth/{signup,confirm,resend,login,logout,session,account}`; `/api/auth/cognito/{start,callback}` | `components/auth/`; `domains/backend/{auth,cognito-auth,cognito-oauth}.ts`; `domains/data/auth-store.ts` | Cognito identity in AWS mode; `accounts`, `account_identities`, `account_sessions`, OAuth transactions/attempts; no model |
 | Profile / availability | `/api/data/profile`; `/api/local/presence` | `app/profile/page.tsx`; repository `updateProfile`, `heartbeat` | `learners`, `profile_revisions`, `presence`; changed search inputs queue indexing; no model |
+| Reset private learning | `/api/data/reset` POST | Profile `ResetLearningMap`; repository `resetLearningMap`; `lib/client/live.ts` | Owner map/events/metadata/runs and non-intent indexes deleted transactionally; retry receipt retained; account/profile/media/shared rooms preserved; no model |
 | Initial load / saved questions / timeline | `/api/data/bootstrap`; `/api/data/events` | `lib/client/store.tsx`, `learning-paths.ts`; repository snapshot/event methods; `lib/math.ts` | Owner concepts/events, profile, saved `agent_runs`, current invitations/room; no model on bootstrap |
 | Panel question / “This question” / Go deeper | `/api/expand` (optional `focus`, `extendsRunId`) | `CommandBar.tsx`, `SidePanel.tsx`, `Inspector.tsx`; `domains/backend/missions.ts`; `domains/backend/agents.ts` → `invokeAgent`; `domains/agents/runtime.ts` | Reads owner map; writes concepts/edges, membership/seed evidence, metadata, run and index jobs; knowledge-map + optional delegated specialists |
 | “My knowledge map” / topic drill-in | `/api/knowledge/overview` GET/POST; `/api/knowledge/overview/read` POST | `use-knowledge-overview.ts`; `domains/backend/knowledge-overview.ts`; `lib/{knowledge-overview,knowledge-hierarchy}.ts`; `KnowledgeMap.tsx` | Owner graph → derived, validated `agent_runs` caches; knowledge-map `summarize`; read endpoint performs no inference/write |
@@ -47,6 +48,8 @@ Test labels refer to matching filenames in `tests/`. Detailed ownership rules li
 | `002_accounts.sql` | Accounts, usernames, provider subjects, revocable hashed sessions, OAuth state and rate limits |
 | `003_semantic.sql` | Durable, deduplicated per-source/per-space index jobs, generation leases and retry state |
 | `004_cognito.sql` | Cognito provider constraints; federated accounts have no local password hash |
+| `005_learning_map_reset.sql` | Durable owner-scoped reset receipts; retries cannot erase later learning |
+| `006_explanation_counts.sql` | Partial explanation-event index for anonymous distinct-learner concept/topic counts |
 
 Migrations run through the shared SQL abstraction in both database modes; append a new migration for future changes. `getRepository()` chooses PGlite or Aurora Data API. Media storage chooses local files or S3 separately. Local/cloud configuration and downloaded models stay ignored; there are no credential values or database copies in the handoff.
 

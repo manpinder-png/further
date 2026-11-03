@@ -20,6 +20,7 @@ import GeomindMap from "@/components/map/GeomindMap";
 import GeomindInspector from "@/components/mission/GeomindInspector";
 import { useGeomind } from "@/lib/client/use-geomind";
 import { useKnowledgeOverview } from "@/lib/client/use-knowledge-overview";
+import { useCompletionCounts } from "@/lib/client/use-completion-counts";
 import KnowledgeOverviewInspector from "@/components/mission/KnowledgeOverviewInspector";
 import type { KnowledgeOverviewGroup } from "@/lib/knowledge-overview";
 import type { FEvent } from "@/lib/types";
@@ -79,6 +80,15 @@ export default function MapScreen() {
     const snapshot = tl.on ? replay(events, tl.t) : nodes;
     return Object.fromEntries(Object.entries(snapshot).filter(([slug]) => !scope || scope.has(slug)));
   }, [tl, events, nodes, scope]);
+  const completionScopes = [
+    ...(view === "knowledge" && levelGroups.length ? [] : conceptList.filter(concept => shownNodes[concept.slug]).map(concept => ({ id: `concept:${concept.slug}`, conceptSlugs: [concept.slug] }))),
+    ...(view === "knowledge" ? shownGroups.map(group => ({ id: `topic:${group.id}`, conceptSlugs: group.conceptSlugs })) : []),
+    ...(knowledgeGroup ? [{ id: "current-topic", conceptSlugs: knowledgeGroup.conceptSlugs }] : []),
+  ];
+  const completions = useCompletionCounts({
+    active: ready && dataMode === "local" && view !== "geomind" && !tl.on,
+    actorId, revision: `${events.length}:${events.at(-1)?.id ?? ""}`, scopes: completionScopes,
+  });
   const visibleKey = (activePath?.key ?? knowledgeGroup?.id ?? "all-topics") + ":" + conceptList.map((concept) => concept.slug).join(",");
   // Per-concept history for the map cards: when it appeared and the latest thing you did with it.
   const nodeMeta = useMemo(() => {
@@ -233,6 +243,7 @@ export default function MapScreen() {
   return <div className="absolute inset-0 flex min-h-0 flex-col">
     {(modelMode === "fixture" || dataMode === "demo") && <p className="shrink-0 border-b border-line bg-panel px-4 py-2 text-xs text-muted" role="status">{dataMode === "demo" ? "Sample map · your account’s saved data is separate." : "Rehearsal AI is enabled. Responses are labelled examples."}</p>}
     {(saveError || loadingError) && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-err/40 bg-panel px-4 py-2 text-sm" role="alert"><span className="flex-1 text-err">{saveError ?? loadingError}</span><button className="btn" disabled={pendingWrites > 0} onClick={() => void (saveError ? retryPendingWrites() : refreshSnapshot()).catch(() => undefined)}>Try again</button></div>}
+    {completions.error && <div className="flex shrink-0 items-center gap-3 border-b border-err/40 bg-panel px-4 py-2 text-xs" role="alert"><span className="flex-1 text-err">{completions.error}</span><button className="btn" onClick={() => void completions.refresh()}>Retry counts</button></div>}
     {pendingWrites > 0 && <div className="shrink-0 px-4 py-1"><OperationStatus label="Saving your progress" detail="Waiting for the local workspace to confirm your changes." /></div>}
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <section className="relative min-h-0 flex-1 bg-bg" aria-label="Your map">
@@ -250,6 +261,7 @@ export default function MapScreen() {
           edges={view === "knowledge" ? edges : visibleEdges}
           nodes={view === "knowledge" ? (tl.on ? replay(events, tl.t) : nodes) : shownNodes}
           suggestions={[]} explorers={tl.on ? [] : explorers} selected={selectedInView} meta={nodeMeta}
+          completionCounts={completions.counts}
           onSelect={(slug) => dispatch({ t: "select", slug })} now={tl.on ? tl.t : Date.now()}
           fitKey={fitKey} holdCamera={tl.on} celebrate={!tl.on} topInset={view === "knowledge" ? 132 : 64}
           you={{ name: profile.displayName, level: 1, frac: 0 }}

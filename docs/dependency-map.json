@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-11-03T00:38:28.286Z",
+  "generatedAt": "2026-11-03T16:45:46.249Z",
   "generator": "scripts/dependency-map.mjs",
-  "sourceFiles": 150,
-  "localImports": 466,
+  "sourceFiles": 158,
+  "localImports": 496,
   "domains": [
     {
       "id": "ui",
-      "fileCount": 46
+      "fileCount": 49
     },
     {
       "id": "backend",
-      "fileCount": 59
+      "fileCount": 62
     },
     {
       "id": "agents",
@@ -26,7 +26,7 @@
     },
     {
       "id": "shared",
-      "fileCount": 26
+      "fileCount": 28
     }
   ],
   "domainEdges": [
@@ -38,12 +38,12 @@
     {
       "from": "backend",
       "to": "data",
-      "count": 43
+      "count": 45
     },
     {
       "from": "backend",
       "to": "shared",
-      "count": 24
+      "count": 25
     },
     {
       "from": "backend",
@@ -58,7 +58,7 @@
     {
       "from": "ui",
       "to": "shared",
-      "count": 48
+      "count": 52
     },
     {
       "from": "ui",
@@ -71,14 +71,24 @@
       "count": 1
     },
     {
+      "from": "shared",
+      "to": "ui",
+      "count": 1
+    },
+    {
       "from": "agents",
       "to": "shared",
       "count": 2
     },
     {
+      "from": "backend",
+      "to": "ui",
+      "count": 1
+    },
+    {
       "from": "data",
       "to": "shared",
-      "count": 4
+      "count": 6
     },
     {
       "from": "data",
@@ -88,13 +98,18 @@
     {
       "from": "retrieval",
       "to": "data",
+      "count": 2
+    },
+    {
+      "from": "retrieval",
+      "to": "shared",
       "count": 1
     }
   ],
   "files": [
-    "app/api/agents/[agentId]/route.ts",
     "app/api/agents/invoke/route.ts",
     "app/api/agents/route.ts",
+    "app/api/agents/[agentId]/route.ts",
     "app/api/auth/account/route.ts",
     "app/api/auth/cognito/callback/route.ts",
     "app/api/auth/cognito/start/route.ts",
@@ -109,9 +124,11 @@
     "app/api/card/[slug]/route.ts",
     "app/api/course/route.ts",
     "app/api/data/bootstrap/route.ts",
+    "app/api/data/completions/route.ts",
     "app/api/data/concepts/route.ts",
     "app/api/data/events/route.ts",
     "app/api/data/profile/route.ts",
+    "app/api/data/reset/route.ts",
     "app/api/expand/route.ts",
     "app/api/explain/route.ts",
     "app/api/geomind/invite/route.ts",
@@ -130,8 +147,8 @@
     "app/api/local/sessions/[id]/route.ts",
     "app/api/match/route.ts",
     "app/api/mcp/route.ts",
-    "app/api/media/[id]/route.ts",
     "app/api/media/understand/route.ts",
+    "app/api/media/[id]/route.ts",
     "app/api/resources/verify/route.ts",
     "app/api/session/[id]/end/route.ts",
     "app/api/session/[id]/message/route.ts",
@@ -164,11 +181,13 @@
     "components/mission/Inspector.tsx",
     "components/mission/KnowledgeOverviewInspector.tsx",
     "components/mission/MatchModal.tsx",
+    "components/mission/PanelResizer.tsx",
+    "components/mission/Review.tsx",
     "components/mission/SidePanel.tsx",
     "components/mission/TimeLapse.tsx",
     "components/shell/TopBar.tsx",
-    "components/ui/Mermaid.tsx",
     "components/ui/bits.tsx",
+    "components/ui/Mermaid.tsx",
     "lib/auth-contracts.ts",
     "lib/builder.ts",
     "lib/canonicalize.ts",
@@ -181,9 +200,11 @@
     "lib/client/narration.ts",
     "lib/client/store.tsx",
     "lib/client/stream.ts",
+    "lib/client/use-completion-counts.ts",
     "lib/client/use-geomind.ts",
     "lib/client/use-knowledge-overview.ts",
     "lib/client/useAIStream.ts",
+    "lib/completions.ts",
     "lib/demo/seed.ts",
     "lib/geomind-layout.ts",
     "lib/geomind.ts",
@@ -198,6 +219,7 @@
     "lib/mcp-tools.ts",
     "lib/parse-expansion.ts",
     "lib/requirements.ts",
+    "lib/review.ts",
     "lib/schemas.ts",
     "lib/server/config.ts",
     "lib/server/meta.ts",
@@ -228,6 +250,7 @@
     "domains/backend/identity.ts",
     "domains/backend/knowledge-overview.ts",
     "domains/backend/media-storage.ts",
+    "domains/backend/missions.ts",
     "domains/backend/social.ts",
     "domains/backend/source-verification.ts",
     "domains/backend/streaming.ts",
@@ -244,31 +267,6 @@
     "domains/ui/contracts.ts"
   ],
   "imports": [
-    {
-      "from": "app/api/agents/[agentId]/route.ts",
-      "to": "domains/agents/index.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/agents/[agentId]/route.ts",
-      "to": "domains/backend/agents.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/agents/[agentId]/route.ts",
-      "to": "domains/backend/http.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/agents/[agentId]/route.ts",
-      "to": "domains/backend/streaming.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/agents/[agentId]/route.ts",
-      "to": "domains/backend/identity.ts",
-      "typeOnly": false
-    },
     {
       "from": "app/api/agents/invoke/route.ts",
       "to": "domains/agents/index.ts",
@@ -312,6 +310,31 @@
     {
       "from": "app/api/agents/route.ts",
       "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/agents/index.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/agents.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/streaming.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/agents/[agentId]/route.ts",
+      "to": "domains/backend/identity.ts",
       "typeOnly": false
     },
     {
@@ -596,7 +619,7 @@
     },
     {
       "from": "app/api/data/bootstrap/route.ts",
-      "to": "domains/agents/contracts.ts",
+      "to": "domains/backend/missions.ts",
       "typeOnly": false
     },
     {
@@ -605,6 +628,26 @@
       "typeOnly": false
     },
     {
+      "from": "app/api/data/completions/route.ts",
+      "to": "lib/completions.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/completions/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/completions/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/completions/route.ts",
+      "to": "domains/data/repository.ts",
+      "typeOnly": false
+    },
+    {
       "from": "app/api/data/concepts/route.ts",
       "to": "domains/backend/http.ts",
       "typeOnly": false
@@ -662,6 +705,21 @@
     {
       "from": "app/api/data/profile/route.ts",
       "to": "lib/schemas.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/reset/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/reset/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/data/reset/route.ts",
+      "to": "domains/data/repository.ts",
       "typeOnly": false
     },
     {
@@ -1005,26 +1063,6 @@
       "typeOnly": false
     },
     {
-      "from": "app/api/media/[id]/route.ts",
-      "to": "domains/backend/http.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/media/[id]/route.ts",
-      "to": "domains/backend/identity.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/media/[id]/route.ts",
-      "to": "domains/backend/media-storage.ts",
-      "typeOnly": false
-    },
-    {
-      "from": "app/api/media/[id]/route.ts",
-      "to": "domains/data/repository.ts",
-      "typeOnly": false
-    },
-    {
       "from": "app/api/media/understand/route.ts",
       "to": "domains/backend/http.ts",
       "typeOnly": false
@@ -1052,6 +1090,26 @@
     {
       "from": "app/api/media/understand/route.ts",
       "to": "domains/backend/media-storage.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/[id]/route.ts",
+      "to": "domains/backend/http.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/[id]/route.ts",
+      "to": "domains/backend/identity.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/[id]/route.ts",
+      "to": "domains/backend/media-storage.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/api/media/[id]/route.ts",
+      "to": "domains/data/repository.ts",
       "typeOnly": false
     },
     {
@@ -1251,6 +1309,16 @@
     },
     {
       "from": "app/page.tsx",
+      "to": "components/mission/Review.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "components/mission/PanelResizer.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
       "to": "components/mission/MatchModal.tsx",
       "typeOnly": false
     },
@@ -1291,12 +1359,22 @@
     },
     {
       "from": "app/page.tsx",
+      "to": "lib/client/use-completion-counts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/page.tsx",
       "to": "components/mission/KnowledgeOverviewInspector.tsx",
       "typeOnly": false
     },
     {
       "from": "app/page.tsx",
       "to": "lib/knowledge-overview.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "app/page.tsx",
+      "to": "lib/types.ts",
       "typeOnly": true
     },
     {
@@ -1312,6 +1390,11 @@
     {
       "from": "app/profile/page.tsx",
       "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "app/profile/page.tsx",
+      "to": "domains/ui/contracts.ts",
       "typeOnly": false
     },
     {
@@ -1731,6 +1814,11 @@
     },
     {
       "from": "components/mission/Inspector.tsx",
+      "to": "lib/review.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Inspector.tsx",
       "to": "lib/types.ts",
       "typeOnly": true
     },
@@ -1777,6 +1865,31 @@
     {
       "from": "components/mission/MatchModal.tsx",
       "to": "components/activity/ActivityPanel.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Review.tsx",
+      "to": "lib/client/store.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Review.tsx",
+      "to": "components/ui/bits.tsx",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Review.tsx",
+      "to": "lib/client/format.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "components/mission/Review.tsx",
+      "to": "lib/client/learning-paths.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "components/mission/Review.tsx",
+      "to": "lib/review.ts",
       "typeOnly": false
     },
     {
@@ -1995,6 +2108,16 @@
       "typeOnly": true
     },
     {
+      "from": "lib/client/use-completion-counts.ts",
+      "to": "lib/completions.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "lib/client/use-completion-counts.ts",
+      "to": "lib/client/live.ts",
+      "typeOnly": false
+    },
+    {
       "from": "lib/client/use-geomind.ts",
       "to": "lib/geomind.ts",
       "typeOnly": true
@@ -2112,6 +2235,16 @@
     {
       "from": "lib/math.ts",
       "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/review.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "lib/review.ts",
+      "to": "lib/client/learning-paths.ts",
       "typeOnly": true
     },
     {
@@ -2445,6 +2578,16 @@
       "typeOnly": false
     },
     {
+      "from": "domains/backend/missions.ts",
+      "to": "domains/agents/contracts.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/backend/missions.ts",
+      "to": "domains/ui/contracts.ts",
+      "typeOnly": true
+    },
+    {
       "from": "domains/backend/social.ts",
       "to": "domains/data/contracts.ts",
       "typeOnly": true
@@ -2520,8 +2663,18 @@
       "typeOnly": true
     },
     {
+      "from": "domains/data/contracts.ts",
+      "to": "lib/completions.ts",
+      "typeOnly": true
+    },
+    {
       "from": "domains/data/repository.ts",
       "to": "lib/math.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/data/repository.ts",
+      "to": "lib/completions.ts",
       "typeOnly": false
     },
     {
@@ -2561,6 +2714,26 @@
     },
     {
       "from": "domains/retrieval/client.ts",
+      "to": "domains/retrieval/space.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/retrieval/client.ts",
+      "to": "domains/retrieval/projection.ts",
+      "typeOnly": false
+    },
+    {
+      "from": "domains/retrieval/projection.ts",
+      "to": "domains/data/contracts.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/retrieval/projection.ts",
+      "to": "lib/types.ts",
+      "typeOnly": true
+    },
+    {
+      "from": "domains/retrieval/projection.ts",
       "to": "domains/retrieval/space.ts",
       "typeOnly": false
     },

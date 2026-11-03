@@ -10,6 +10,16 @@ The local engine has one exclusive connection. One application process owns one 
 
 `FurtherRepository` isolates the application from the engine. The same schema and repository now run against either PGlite or Aurora PostgreSQL through Data API. The AWS mode keeps the database private, connects over HTTPS using the server's AWS role, and uses Cognito identity while the UI, API and agents run locally. Ordered migrations acquire a transaction-scoped advisory lock so teammates can start against the shared database concurrently. This does not establish production throughput, restore readiness or population-scale retrieval quality.
 
+Migration versions use the platform-native basename, supporting both Windows and Unix paths. Previously skipped migrations are applied on the next repository initialization without resetting existing data.
+
+`getCompletionCounts(actorId, scopes)` derives anonymous distinct-learner totals from saved agent explanation evidence. It validates that every requested canonical concept is in the viewer's map, uses `lib/math.ts` to recognize a full explanation, and intersects learner sets across all topic members. Repeated 3/3 attempts cannot inflate totals; partial grades, viewing, client-authored grades and fixture output do not count. No assessment text or learner identity leaves the method. Migration 006 adds only a partial explanation-event index; existing evidence counts immediately, with no mutable counter or data backfill. Resetting learning removes that learner's contribution.
+
+## Resetting private learning
+
+`resetLearningMap(actorId, idempotencyKey)` removes the owner's concept membership, learning events, generated metadata and agent runs, and non-intent indexing jobs/vectors in one transaction. Canonical concepts/edges are shared vocabulary and are never deleted. Accounts, sessions, profile revisions/preferences/current goal, uploaded media, shared conversations, blocks, and reports remain. An empty map does not erase a peer's conversation history.
+
+Migration 005 adds owner-scoped `learning_map_resets` receipts. Repeating a committed request key never deletes learning created afterward, including after a process restart. Learner-row locking serializes reset with agent creation, map writes, event writes and index publication. Running guide records, active rooms and unexpired pending invitations reject reset without changing data. Late events for removed concepts fail explicitly, and deleted indexing leases cannot publish vectors.
+
 Official references checked November 1, 2026: [PGlite getting started](https://pglite.dev/docs/), [PGlite API and transactions](https://pglite.dev/docs/api), [pgvector extension](https://pglite.dev/extensions/). The current extension is the separate package `@electric-sql/pglite-pgvector`.
 
 ## Entities and ownership

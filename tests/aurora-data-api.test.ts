@@ -151,6 +151,16 @@ test("existing repository graph, jobs, vectors and Cognito identity work through
     assert.equal(vectorRows[0].vector.length,768);
     await repo.auth.createSession("a".repeat(64),alice.id,Date.now()+60_000);
     assert.equal((await repo.auth.sessionAccount("a".repeat(64)))?.id,alice.id);
+    await repo.recordEvent(alice.learnerId,{slug:"semantic-space",kind:"explain",payload:{score:3,source:"agent",provider:"meta"},idempotencyKey:"data-api-explanation"});
+    assert.deepEqual(await repo.getCompletionCounts(alice.learnerId,[{id:"topic",conceptSlugs:["semantic-space"]}]),{topic:1});
+    await repo.resetLearningMap(alice.learnerId,"data-api-reset");
+    assert.deepEqual((await repo.getSnapshot(alice.learnerId)).concepts,[]);
+    assert.equal((await repo.getProfile(alice.learnerId)).currentIntent,"Understand semantic similarity");
+    assert.equal((await repo.getOwnedVectors(alice.learnerId,EMBEDDING_SPACE)).length,1);
+    assert.equal((await repo.auth.sessionAccount("a".repeat(64)))?.id,alice.id);
+    await repo.addConcepts(alice.learnerId,[{slug:"after-reset",title:"New learning",domain:"general"}]);
+    await repo.resetLearningMap(alice.learnerId,"data-api-reset");
+    assert.deepEqual((await repo.getSnapshot(alice.learnerId)).concepts.map(concept=>concept.slug),["after-reset"]);
   }finally{await pg.close();}
 });
 

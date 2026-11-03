@@ -4,8 +4,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, readdir, unlink } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { replay } from "../../lib/math";
+import { basename, dirname, resolve } from "node:path";
+import { applyEvent, replay } from "../../lib/math";
+import { CompletionCountsRequest } from "../../lib/completions";
 import type { Concept, Edge, FEvent, Profile } from "../../lib/types";
 import type { AgentRunRecord, DataProfile, FurtherRepository, IndexItem, IndexJob, IndexSpace, IndexStatus, Invitation, Json, LearningSession, MediaRecord, MetadataRecord, PeerCandidate, Provenance, SessionMessage, Snapshot, VectorHit, VectorRecord } from "./contracts";
 import { createAuthRepository } from "./auth-store";
@@ -93,6 +94,10 @@ async function getProfile(db: Sql, id: string): Promise<DataProfile> {
   if (!r) throw new DataError("Learner not found", "NOT_FOUND");
   return profile(r);
 }
+async function lockLearner(db: Sql, actorId: string) {
+  actor(actorId);
+  if (!(await db.query("SELECT id FROM learners WHERE id=$1 FOR UPDATE", [sqlUuid(actorId)])).rows.length) throw new DataError("Learner not found", "NOT_FOUND");
+}
 async function blocked(db: Sql, a: string, b: string) {
   return (await db.query("SELECT 1 FROM blocks WHERE (blocker=$1 AND blocked=$2) OR (blocker=$2 AND blocked=$1)", [sqlUuid(a),sqlUuid(b)])).rows.length > 0;
 }
@@ -116,6 +121,7 @@ async function record(db: Sql, actorId: string, e: { slug: string; kind: FEvent[
     if (old.concept_slug !== e.slug || old.kind !== e.kind) bad("Idempotency key belongs to another event");
     return event(old);
   }
+  if (e.kind !== "seed" && !(await db.query("SELECT 1 FROM learner_concepts WHERE learner_id=$1 AND concept_slug=$2", [sqlUuid(actorId), e.slug])).rows.length) throw new DataError("This topic is no longer in your learning map.", "NOT_FOUND");
   const at = e.at ?? Date.now();
   if (!Number.isSafeInteger(at) || at < 0 || at > Date.now() + 60_000) bad("Invalid event timestamp");
   await db.query("INSERT INTO learner_concepts(learner_id,concept_slug,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",[sqlUuid(actorId),e.slug,at]);
@@ -159,7 +165,7 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
     });
     const files = options.migrationPath ? [options.migrationPath] : (await readdir(migrations)).filter(name => /^\d+_.*\.sql$/.test(name)).sort().map(name => resolve(migrations, name));
     for (const file of files) {
-      const version = Number(file.split("/").pop()!.match(/^\d+/)?.[0] ?? 1);
+      const version = Number(basename(file).match(/^\d+/)?.[0] ?? 1);
       const sql = await readFile(file, "utf8");
       await db.transaction(async tx => {
         await migrationLock(tx);
@@ -184,6 +190,53 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
       return getProfile(db,actorId);
     },
     getProfile: (id) => getProfile(db,id),
+    async getCompletionCounts(actorId, scopes) {
+      actor(actorId);
+      CompletionCountsRequest.parse({ scopes });
+      if (new Set(scopes.map(scope => scope.id)).size !== scopes.length) bad("Completion scopes must have unique IDs.");
+      const slugs = [...new Set(scopes.flatMap(scope => scope.conceptSlugs))];
+      if (!slugs.length) return {};
+      const owned = (await db.query<{ concept_slug: string }>(
+        "SELECT concept_slug FROM learner_concepts WHERE learner_id=$1 AND concept_slug IN (SELECT jsonb_array_elements_text($2::jsonb))",
+        [sqlUuid(actorId), json(slugs)],
+      )).rows;
+      if (owned.length !== slugs.length) throw new DataError("Completion counts are available only for topics in your map.", "NOT_FOUND");
+      // Only aggregates leave this method; feedback and questions are not loaded.
+      const evidence = (await db.query<{ learner_id: string; concept_slug: string; score: unknown }>(
+        "SELECT DISTINCT e.learner_id,e.concept_slug,e.payload->'score' AS score FROM learning_events e JOIN learner_concepts own ON own.concept_slug=e.concept_slug AND own.learner_id=$1 JOIN learner_concepts contributor ON contributor.concept_slug=e.concept_slug AND contributor.learner_id=e.learner_id WHERE e.kind='explain' AND e.payload->>'source'='agent' AND e.payload->>'provider' IS DISTINCT FROM 'fixture' AND e.concept_slug IN (SELECT jsonb_array_elements_text($2::jsonb))",
+        [sqlUuid(actorId), json(slugs)],
+      )).rows;
+      const completed = new Map<string, Set<string>>();
+      for (const row of evidence) {
+        if (typeof row.score !== "number" || !Number.isInteger(row.score) || row.score < 0 || row.score > 3) continue;
+        const assessment: FEvent = { id: 0, slug: row.concept_slug, kind: "explain", payload: { score: row.score }, at: 0 };
+        if (applyEvent(undefined, assessment).state !== "understood") continue;
+        if (!completed.has(row.concept_slug)) completed.set(row.concept_slug, new Set());
+        completed.get(row.concept_slug)!.add(row.learner_id);
+      }
+      return Object.fromEntries(scopes.map(scope => {
+        const members = [...new Set(scope.conceptSlugs)].map(slug => completed.get(slug) ?? new Set<string>());
+        members.sort((a, b) => a.size - b.size);
+        return [scope.id, [...members[0]].filter(learner => members.every(member => member.has(learner))).length];
+      }));
+    },
+    async resetLearningMap(actorId, key) {
+      if (!/^[A-Za-z0-9:_.-]{1,160}$/.test(key)) bad("Invalid reset request key");
+      await db.transaction(async tx => {
+        await lockLearner(tx, actorId);
+        if ((await tx.query("SELECT 1 FROM learning_map_resets WHERE learner_id=$1 AND idempotency_key=$2", [sqlUuid(actorId), key])).rows.length) return;
+        if ((await tx.query("SELECT 1 FROM agent_runs WHERE learner_id=$1 AND status='running' LIMIT 1", [sqlUuid(actorId)])).rows.length) throw new DataError("Wait for your guide to finish before resetting your map.", "LEARNING_MAP_BUSY");
+        if ((await tx.query("SELECT 1 FROM session_members sm JOIN learning_sessions s ON s.id=sm.session_id WHERE sm.learner_id=$1 AND s.ended_at IS NULL LIMIT 1", [sqlUuid(actorId)])).rows.length ||
+            (await tx.query("SELECT 1 FROM invitations WHERE (from_user=$1 OR to_user=$1) AND status='pending' AND expires_at>$2 LIMIT 1", [sqlUuid(actorId), Date.now()])).rows.length) throw new DataError("Finish your conversation or resolve your pending invitation before resetting your map.", "LEARNING_MAP_BUSY");
+        await tx.query("DELETE FROM retrieval_index_jobs WHERE learner_id=$1 AND entity_type<>'intent'", [sqlUuid(actorId)]);
+        await tx.query("DELETE FROM retrieval_vectors WHERE learner_id=$1 AND entity_type<>'intent'", [sqlUuid(actorId)]);
+        await tx.query("DELETE FROM inferred_metadata WHERE learner_id=$1", [sqlUuid(actorId)]);
+        await tx.query("DELETE FROM learning_events WHERE learner_id=$1", [sqlUuid(actorId)]);
+        await tx.query("DELETE FROM learner_concepts WHERE learner_id=$1", [sqlUuid(actorId)]);
+        await tx.query("DELETE FROM agent_runs WHERE learner_id=$1", [sqlUuid(actorId)]);
+        await tx.query("INSERT INTO learning_map_resets(learner_id,idempotency_key,created_at) VALUES($1,$2,$3)", [sqlUuid(actorId), key, Date.now()]);
+      });
+    },
     async updateProfile(actorId, patch) {
       return db.transaction(async tx => {
         await tx.query("SELECT id FROM learners WHERE id=$1 FOR UPDATE",[sqlUuid(actorId)]);
@@ -208,6 +261,7 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
     async addConcepts(actorId, concepts, edges = []) {
       await getProfile(db,actorId);
       await db.transaction(async tx => {
+        await lockLearner(tx, actorId);
         // Shared canonical hierarchy needs one check-and-write order across
         // separate AWS clients. Local PGlite already serializes transactions.
         if(options.database&&edges.some(edge=>edge.kind==="part_of"))await tx.query("SELECT pg_advisory_xact_lock($1)",[41501011]);
@@ -233,10 +287,16 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
         }
       });
     },
-    async recordEvent(actorId, e) { return db.transaction(tx => record(tx,actorId,e)); },
+    async recordEvent(actorId, e) {
+      return db.transaction(async tx => {
+        await lockLearner(tx, actorId);
+        return record(tx, actorId, e);
+      });
+    },
     async saveMetadata(actorId, kind, values, provenance) {
       await getProfile(db,actorId);
       return db.transaction(async tx=>{
+        await lockLearner(tx, actorId);
         const latest = (await tx.query<{created_at:number}>("SELECT created_at FROM inferred_metadata WHERE learner_id=$1 AND kind=$2 ORDER BY created_at DESC LIMIT 1", [sqlUuid(actorId),kind])).rows[0];
         const r: MetadataRecord={id:randomUUID(),kind,values,provenance,createdAt:Math.max(Date.now(),Number(latest?.created_at??0)+1)};
         await tx.query("INSERT INTO inferred_metadata(id,learner_id,kind,values_json,provenance,created_at) VALUES($1,$2,$3,$4,$5,$6)",[sqlUuid(r.id),sqlUuid(actorId),kind,json(values),json(provenance),r.createdAt]);
@@ -421,14 +481,16 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
       return id;
     },
     async beginAgentRun(input) {
-      await getProfile(db,input.actorId);
-      if (input.parentRunId) {
-        const parent=(await db.query("SELECT id FROM agent_runs WHERE id=$1 AND learner_id=$2",[sqlUuid(input.parentRunId),sqlUuid(input.actorId)])).rows;
-        if (!parent.length) bad("Parent run not found");
-      }
-      const r:AgentRunRecord={...input,status:"running",createdAt:Date.now()};
-      await db.query("INSERT INTO agent_runs(id,learner_id,agent_id,parent_run_id,status,input_json,model,provider,created_at) VALUES($1,$2,$3,$4,'running',$5,$6,$7,$8)",[sqlUuid(r.id),sqlUuid(r.actorId),r.agentId,sqlUuid(r.parentRunId??null),json(r.input),r.model??null,r.provider??null,r.createdAt]);
-      return r;
+      return db.transaction(async tx => {
+        await lockLearner(tx, input.actorId);
+        if (input.parentRunId) {
+          const parent=(await tx.query("SELECT id FROM agent_runs WHERE id=$1 AND learner_id=$2",[sqlUuid(input.parentRunId),sqlUuid(input.actorId)])).rows;
+          if (!parent.length) bad("Parent run not found");
+        }
+        const r:AgentRunRecord={...input,status:"running",createdAt:Date.now()};
+        await tx.query("INSERT INTO agent_runs(id,learner_id,agent_id,parent_run_id,status,input_json,model,provider,created_at) VALUES($1,$2,$3,$4,'running',$5,$6,$7,$8)",[sqlUuid(r.id),sqlUuid(r.actorId),r.agentId,sqlUuid(r.parentRunId??null),json(r.input),r.model??null,r.provider??null,r.createdAt]);
+        return r;
+      });
     },
     async finishAgentRun(actorId,runId,result) {
       const changed=await db.query("UPDATE agent_runs SET status=$3,output_json=$4,error=$5,model=COALESCE($6,model),provider=COALESCE($7,provider),finished_at=$8 WHERE id=$1 AND learner_id=$2 AND status='running' RETURNING id",[sqlUuid(runId),sqlUuid(actorId),result.error?"failed":"succeeded",result.output?json(result.output):null,result.error?.slice(0,2000)??null,result.model??null,result.provider??null,Date.now()]);
@@ -493,11 +555,15 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
     },
     async enqueueIndexItems(actorId, items, space) {
       await getProfile(db, actorId);
-      await db.transaction(tx => enqueue(tx, actorId, items, space));
+      await db.transaction(async tx => {
+        await lockLearner(tx, actorId);
+        await enqueue(tx, actorId, items, space);
+      });
       return indexStatus(db, actorId, space);
     },
     async reconcileIndex(actorId, space) {
       await db.transaction(async tx => {
+        await lockLearner(tx, actorId);
         const p = await getProfile(tx, actorId);
         const concepts = (await tx.query<ConceptRow>("SELECT c.* FROM concepts c JOIN learner_concepts lc ON lc.concept_slug=c.slug WHERE lc.learner_id=$1", [sqlUuid(actorId)])).rows;
         await enqueue(tx, actorId, concepts.map(c => ({ entityType: "concept" as const, entityId: c.slug, text: `${c.title}. ${c.hook}` })), space);
@@ -527,6 +593,7 @@ export async function createRepository(options: RepositoryOptions = {}): Promise
     async completeIndexJob(actorId, jobId, leaseToken, vector) {
       actor(actorId); validateVector(vector);
       return db.transaction(async tx => {
+        await lockLearner(tx, actorId);
         const r = (await tx.query<JobRow>("SELECT * FROM retrieval_index_jobs WHERE id=$1 AND learner_id=$2 FOR UPDATE", [sqlUuid(jobId),sqlUuid(actorId)])).rows[0];
         if (!r || r.status !== "processing" || r.lease_token !== leaseToken || Number(r.lease_expires_at) <= Date.now()) return false;
         // A source edit atomically invalidates the lease; reconciling also repairs

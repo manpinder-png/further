@@ -27,19 +27,22 @@ test("metadata is independently callable and preserves unknowns", async () => {
   assert.equal(result.contractVersion, "1.0");
 });
 
-test("knowledge-map performs a real tool loop and delegates metadata with one identity and budget", async () => {
+test("knowledge-map prepares required tools with two model calls and one identity and budget", async () => {
   const seen: string[] = [];
   const model = new QueueModel([
-    { ...turn(null), text: "", toolCalls: [{ id: "read", name: "get_map", arguments: "{}" }, { id: "infer", name: "infer_metadata", arguments: '{"text":"How do GPUs work?"}' }] },
     turn(metadata), turn(map),
   ]);
   const result = await createAgentRuntime({ model, tools: { ...ports, getMap: async (ctx) => { seen.push(ctx.actorId, ctx.correlationId); return { concepts: [] }; } } })
     .invoke("knowledge-map", { text: "How do GPUs work?" }, actor);
   assert.deepEqual(seen, ["actor-a", "trace-a"]);
-  assert.equal(result.usage.modelCalls, 3);
+  assert.equal(result.usage.modelCalls, 2);
   assert.equal(result.usage.toolCalls, 2);
   assert.ok(result.trace.some((e) => e.kind === "delegate" && e.name === "metadata"));
-  assert.ok(model.requests[2].messages.some((m) => m.role === "tool" && m.toolCallId === "infer"));
+  const prepared = JSON.parse(model.requests[1].messages[1].content).preparedTools;
+  assert.deepEqual(prepared, { get_map: { concepts: [] }, infer_metadata: metadata });
+  assert.equal(model.requests[0].agentId, "metadata");
+  assert.equal(model.requests[1].agentId, "knowledge-map");
+  assert.deepEqual(model.requests[1].tools.map(tool => tool.name), ["find_peers", "learn"]);
   assert.equal(result.data.concepts[0].slug, "gpu");
   assert.deepEqual(result.artifacts, [{ agentId: "metadata", data: metadata, provider: "meta", model: "muse-spark-1.3" }]);
   assert.equal(result.artifacts.some((item) => "get_map" === String(item.agentId)), false);
@@ -63,7 +66,6 @@ test("no eligible peers preserves the no-match outcome", async () => {
 test("knowledge-map refuses invented peer identifiers even after repair", async () => {
   const bad = { ...map, recommendedPeerIds: ["invented-person"] };
   const model = new QueueModel([
-    { ...turn(null), toolCalls: [{ id: "read", name: "get_map", arguments: "{}" }, { id: "infer", name: "infer_metadata", arguments: '{"text":"GPUs"}' }] },
     turn(metadata), turn(bad), turn(bad),
   ]);
   await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs" }, actor), (err: unknown) => err instanceof AgentError && err.code === "INVALID_OUTPUT");
@@ -71,7 +73,7 @@ test("knowledge-map refuses invented peer identifiers even after repair", async 
 
 test("shared model-call budget includes delegated agents", async () => {
   const model = new QueueModel([
-    { ...turn(null), toolCalls: [{ id: "infer", name: "infer_metadata", arguments: '{"text":"GPUs"}' }] },
+    turn(metadata),
   ]);
   await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs" }, { ...actor, budget: { maxModelCalls: 1 } }), (err: unknown) => err instanceof AgentError && err.code === "BUDGET_EXCEEDED");
   assert.equal(model.requests.length, 1);
@@ -80,13 +82,13 @@ test("shared model-call budget includes delegated agents", async () => {
 test("tool allowlist prevents arbitrary actions and inherited property names", async () => {
   for (const name of ["delete_everything", "toString"]) {
     const model = new QueueModel([{ ...turn(null), toolCalls: [{ id: "bad", name, arguments: "{}" }] }]);
-    await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs" }, actor), (err: unknown) => err instanceof AgentError && err.code === "TOOL_DENIED");
+    await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs", objective: "plan" }, actor), (err: unknown) => err instanceof AgentError && err.code === "TOOL_DENIED");
   }
 });
 
 test("untrusted actor arguments cannot be added to tools", async () => {
   const model = new QueueModel([{ ...turn(null), toolCalls: [{ id: "bad", name: "get_map", arguments: '{"actorId":"someone-else"}' }] }]);
-  await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs" }, actor), (err: unknown) => err instanceof AgentError && err.code === "INVALID_INPUT");
+  await assert.rejects(createAgentRuntime({ model, tools: ports }).invoke("knowledge-map", { text: "GPUs", objective: "plan" }, actor), (err: unknown) => err instanceof AgentError && err.code === "INVALID_INPUT");
 });
 
 test("aborted invocation never calls a provider", async () => {
@@ -113,7 +115,7 @@ test("explicit fixture mode exercises agent collaboration without network infere
   assert.equal(result.mode, "fixture");
   assert.equal(result.provider, "fixture");
   assert.deepEqual(result.data.recommendedPeerIds, ["peer-b"]);
-  assert.ok(result.trace.some((e) => e.name === "metadata" && e.kind === "delegate"));
+  assert.equal(result.trace.some((e) => e.name === "metadata" && e.kind === "delegate"), false);
   assert.ok(result.trace.some((e) => e.name === "peer-guide" && e.kind === "delegate"));
   assert.equal(result.usage.inputTokens, 0);
 });
@@ -121,19 +123,39 @@ test("explicit fixture mode exercises agent collaboration without network infere
 test("a focused plan reads existing evidence without mandatory metadata or map expansion", async()=>{
   const plan={...map,concepts:[],nextActions:["Predict what happens when one worker waits for memory."]};
   const model=new QueueModel([
-    {...turn(null),toolCalls:[{id:"read",name:"get_map",arguments:"{}"}]},
     turn(plan),
   ]);
   const result=await createAgentRuntime({model,tools:ports}).invoke("knowledge-map",{text:"What should I try next?",objective:"plan"},actor);
   assert.deepEqual(result.data.concepts,[]);assert.equal(result.data.nextActions.length,1);
-  assert.equal(result.usage.modelCalls,2);assert.equal(result.artifacts.length,0);
+  assert.equal(result.usage.modelCalls,1);assert.equal(result.artifacts.length,0);
   assert.equal(result.trace.some(event=>event.name==="infer_metadata"),false);
+});
+
+test("required map preparation fails before inference when reads fail or exceed bounds", async () => {
+  for (const getMap of [
+    async () => { throw new AgentError("PROVIDER", "Map read unavailable."); },
+    async () => ({ concepts: [], oversized: "x".repeat(80_001) }),
+  ]) {
+    const model = new QueueModel([]);
+    await assert.rejects(createAgentRuntime({ model, tools: { ...ports, getMap } }).invoke("knowledge-map", { text: "GPUs" }, actor), AgentError);
+    assert.equal(model.requests.length, 0);
+  }
+});
+
+test("required map preparation preserves deadline and shared tool budget", async () => {
+  const model = new QueueModel([]);
+  await assert.rejects(createAgentRuntime({ model, tools: { ...ports, getMap: async () => new Promise(() => {}) } })
+    .invoke("knowledge-map", { text: "GPUs" }, { ...actor, budget: { timeoutMs: 20 } }),
+  (error: unknown) => error instanceof AgentError && error.code === "CANCELLED");
+  await assert.rejects(createAgentRuntime({ model, tools: ports })
+    .invoke("knowledge-map", { text: "GPUs" }, { ...actor, budget: { maxToolCalls: 1 } }),
+  (error: unknown) => error instanceof AgentError && error.code === "BUDGET_EXCEEDED");
+  assert.equal(model.requests.length, 0);
 });
 
 test("planning cannot silently expand the map and must converge on one next action", async()=>{
   for(const bad of [map,{...map,concepts:[],nextActions:["One","Two"]}]){
     const model=new QueueModel([
-      {...turn(null),toolCalls:[{id:"read",name:"get_map",arguments:"{}"}]},
       turn(bad),turn(bad),
     ]);
     await assert.rejects(createAgentRuntime({model,tools:ports}).invoke("knowledge-map",{text:"Plan my next step",objective:"plan"},actor),(error:unknown)=>error instanceof AgentError&&error.code==="INVALID_OUTPUT");

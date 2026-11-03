@@ -73,9 +73,7 @@ async function mockProvider(input: string | URL | Request, init?: RequestInit): 
   if (req.url !== "https://api.meta.ai/v1/responses") throw new Error("External network disabled in overview tests");
   const body = await req.json() as Record<string, unknown>; requests.push(body);
   const items = body.input as Array<Record<string, unknown>>;
-  const tool = items.find(item => item.type === "function_call_output");
-  if (!tool) return modelResponse([{ id: "fc_summary", type: "function_call", call_id: "summary_map", name: "get_map", arguments: "{}", status: "completed" }], body.stream === true);
-  const source = JSON.parse(String(tool.output)) as { concepts: Array<{ slug: string; title: string }> };
+  const source = JSON.parse(String(items.find(item => item.role === "user")?.content)).preparedTools.get_map as { concepts: Array<{ slug: string; title: string }> };
   const hardware = source.concepts.filter(concept => concept.slug === gpu.slug || concept.slug === chips.slug);
   const remaining = source.concepts.filter(concept => !hardware.includes(concept));
   const groups = [
@@ -124,10 +122,10 @@ test("live summary groups cross-question concepts once and does not mutate learn
   assert.deepEqual(result.overview.groups.flatMap(group => group.conceptSlugs).sort(), [gpu.slug, chips.slug, yeast.slug].sort());
   const after = await repo.getSnapshot(actor);
   for (const key of ["profile", "metadata", "concepts", "edges", "events"] as const) assert.deepEqual(after[key], before[key], key);
-  assert.ok(requests.length >= 2);
+  assert.equal(requests.length, 1, "the map read must not require a separate model round trip");
   const text = JSON.stringify(requests);
   for (const secret of ["PRIVATE_CURRENT_INTENT", "PRIVATE_BACKGROUND", "PRIVATE_METADATA", "PRIVATE_ROLE"]) assert.equal(text.includes(secret), false, secret);
-  for (const body of requests) assert.deepEqual((body.tools as Array<{ name: string }>).map(tool => tool.name), ["get_map"]);
+  for (const body of requests) assert.deepEqual(body.tools ?? [], []);
 });
 
 test("cached reloads and concurrent requests reuse one run, including after unrelated run pagination", async () => {
@@ -135,7 +133,7 @@ test("cached reloads and concurrent requests reuse one run, including after unre
   const sourceHash = await hash();
   const [first, concurrent] = await Promise.all([generateKnowledgeOverview(actor, { sourceHash }), generateKnowledgeOverview(actor, { sourceHash })]);
   assert.equal(first.runId, concurrent.runId); const count = requests.length;
-  assert.equal(count, 2, "one tool read and one summary completion across both callers");
+  assert.equal(count, 1, "one prepared map read and one model completion across both callers");
   const cached = await getKnowledgeOverview(repo, actor);
   assert.equal(cached.status, "ready"); assert.equal(cached.runId, first.runId);
   await repo.recordEvent(actor, { slug: gpu.slug, kind: "open", idempotencyKey: "summary-open" });
@@ -265,8 +263,8 @@ test("whole-map summary includes more than the old 100-concept context window an
   alterOutput = output => ({ ...output, groups: [{ id: "all-saved", title: "Saved topics", summary: "Test transport groups all supplied canonical members.", conceptSlugs: (output.groups as Array<{ conceptSlugs: string[] }>).flatMap(group => group.conceptSlugs) }] });
   const result = await generateKnowledgeOverview(actor, { sourceHash: await hash() });
   assert.equal(result.overview.groups.flatMap(group => group.conceptSlugs).length, 101);
-  const supplied = requests.flatMap(body => body.input as Array<Record<string, unknown>>).find(item => item.type === "function_call_output");
-  assert.equal((JSON.parse(String(supplied?.output)).concepts as unknown[]).length, 101);
+  const supplied = requests.flatMap(body => body.input as Array<Record<string, unknown>>).find(item => item.role === "user");
+  assert.equal((JSON.parse(String(supplied?.content)).preparedTools.get_map.concepts as unknown[]).length, 101);
   const snapshot = await repo.getSnapshot(actor);
   const oversized = [...snapshot.concepts, ...Array.from({ length: 100 }, (_, index) => ({ slug: `oversize-${index}`, title: `Overflow ${index}`, hook: "", domain: "general" }))];
   assert.throws(() => knowledgeOverviewSource({ ...snapshot, concepts: oversized }), /200 concepts/);

@@ -11,7 +11,7 @@ import { pathFor, progressFor, suggestNext } from "../insight";
 import { CATALOG, CATALOG_EDGES, DEMO_PROFILE, START_SLUGS, seedEvents, seedExplorers } from "../demo/seed";
 import { placeNear } from "../layout";
 import type { SystemStatus } from "../server/config";
-import { getDataMode, hydrateLive, liveFetch, localIdentity, persistEvent, setExpectedActor, MODE_KEY, IDENTITY_CHANGE_KEY } from "./live";
+import { getDataMode, hydrateLive, liveFetch, localIdentity, persistEvent, setExpectedActor, MODE_KEY, IDENTITY_CHANGE_KEY, MAP_RESET_KEY } from "./live";
 import type { DataMode, MapSnapshot, LocalProfile, Mission } from "@/domains/ui/contracts";
 import { errorMessage, mutationKey, mergeMissions } from "@/domains/ui/contracts";
 import type { AuthSession } from "@/lib/auth-contracts";
@@ -264,7 +264,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const boot = useRef(false);
   useEffect(() => {
     const changed = (event: StorageEvent) => {
-      if (event.key === MODE_KEY || event.key === IDENTITY_CHANGE_KEY) window.location.reload();
+      if (event.key === MODE_KEY || event.key === IDENTITY_CHANGE_KEY || event.key === MAP_RESET_KEY) window.location.reload();
     };
     window.addEventListener("storage", changed);
     return () => window.removeEventListener("storage", changed);

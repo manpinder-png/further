@@ -1,6 +1,7 @@
 // Public data contracts. No database driver imports: safe for API/type consumers.
 import type { Concept, Edge, EventKind, Explorer, FEvent, Profile, UserNode } from "../../lib/types";
 import type { AuthRepository } from "./auth-contracts";
+import type { CompletionScope } from "../../lib/completions";
 
 export type Json = Record<string, unknown>;
 export interface DataProfile extends Profile { id: string; availableMinutes: number; revision: number }
@@ -82,6 +83,10 @@ export interface FurtherRepository {
   getProfile(actorId: string): Promise<DataProfile>;
   updateProfile(actorId: string, patch: Partial<Profile> & { availableMinutes?: number }): Promise<DataProfile>;
   getSnapshot(actorId: string): Promise<Snapshot>;
+  /** Anonymous unique-learner totals; all concepts in a scope must be explained. */
+  getCompletionCounts(actorId: string, scopes: CompletionScope[]): Promise<Record<string, number>>;
+  /** Clears private learning history once per key; preserves identity and shared rooms. */
+  resetLearningMap(actorId: string, idempotencyKey: string): Promise<void>;
   getConcepts(): Promise<Concept[]>;
   addConcepts(actorId: string, concepts: Concept[], edges?: Edge[]): Promise<void>;
   recordEvent(actorId: string, event: { slug: string; kind: EventKind; payload?: Json; idempotencyKey: string; at?: number }): Promise<FEvent>;

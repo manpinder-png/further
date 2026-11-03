@@ -15,6 +15,8 @@ Composition (November 2): the radial knowledge map fills the screen; one side pa
 
 The personal guide can advise using the saved map. Planning is read-only: it does not create a new quest or change the current learning goal. When a suggested topic already belongs to a path, the guide offers an Open action that selects the appropriate saved question and topic.
 
+Concept and overview-topic nodes include a small completed-learner counter. Each person counts once after a saved 3/3 AI-reviewed explain-back; a topic requires that person to have explained every member concept. Badges expose anonymous totals and explain that completion is evidence, not certified mastery. Counts load independently of the map/LLM, refresh after saved feedback, and poll every 20 seconds while the page is focused (also on refocus). Errors show a retry action instead of fake zeros. Sample maps and historical replay do not show current community counts.
+
 Saved lessons are scoped to the account, concept, depth instruction and live/fixture mode. They are read from successful persisted agent runs, validated again before returning, and never borrowed from another account or from demonstration requests. A changed lesson instruction starts a fresh version. Completing practice records the exact lesson run; completing an older version cannot hide a replacement lesson's practice. Interrupted requests keep their original retry key, while a confirmed failure before saving may start a fresh attempt.
 
 ## Authentication surfaces
@@ -22,6 +24,8 @@ Saved lessons are scoped to the account, concept, depth instruction and live/fix
 `/signup` and `/login` use the real `/api/auth/*` endpoints. Signup collects name, unique username, email and password; it does not claim email ownership has been verified. Google sign-in is shown as available only when the session response reports configured OAuth credentials. Google OAuth is parked at the user’s request; when unconfigured, its button and setup prompt are omitted, and email signup remains usable. No fake federation result or client-generated account is used.
 
 Successful login/signup and logout perform a hard navigation, clear the active workspace by replacing the store, and notify other tabs through the identity-change key. Account details are edited through `/api/auth/account`; learning preferences use `/api/data/profile`. Their save acknowledgements are separate. Test-persona selection is visible only when the backend explicitly enables local test profiles. It is not a substitute for account sign-in.
+
+Profile's **Reset learning map** action reveals a separate permanent-deletion confirmation. It clears all saved questions, map concepts, progress, and generated learning history, while keeping the account/profile, uploaded images, and shared conversations. Sample-map mode, pending writes, guide work, and active conversations/invitations disable the action; the backend independently guards active work. Errors stay visible, and retries reuse the same request key. Success hard-navigates to the Map page and broadcasts `further:map-reset:v1`, so other tabs reload instead of merging old missions or drafts back into the cleared map.
 
 ## Boundaries
 

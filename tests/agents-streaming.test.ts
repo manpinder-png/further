@@ -94,12 +94,11 @@ test("streamed Meta tool delegation preserves opaque replay and emits actual too
   const map = { intent: "GPUs", root: "gpu", rootTitle: "GPUs", concepts: [{ slug: "gpu", title: "GPUs", hook: "Parallel work", difficulty: .4 }], explanation: "Start here.", recommendedPeerIds: [], nextActions: [] };
   const transport: typeof fetch = async (_url, options) => {
     requests.push(JSON.parse(String(options?.body)));
-    const output = requests.length === 1 ? [
+    const output = requests.length === 2 ? [
       { id: "rs_1", type: "reasoning", summary: [], encrypted_content: "opaque-not-public" },
       { ...finalMessage("Read map", "pre"), phase: "commentary" },
-      { id: "fc_1", type: "function_call", call_id: "read", name: "get_map", arguments: "{}", status: "completed" },
-      { id: "fc_2", type: "function_call", call_id: "infer", name: "infer_metadata", arguments: '{"text":"GPUs"}', status: "completed" },
-    ] : [finalMessage(JSON.stringify(requests.length === 2 ? metadata : map))];
+      { id: "fc_1", type: "function_call", call_id: "peers", name: "find_peers", arguments: '{"query":"GPUs"}', status: "completed" },
+    ] : [finalMessage(JSON.stringify(requests.length === 1 ? metadata : map))];
     return responseStream([{ type: "response.completed", response: finalResponse(output) }]);
   };
   const model = new OpenAICompatibleAgentModel({ metaApiKey: "fake", routes: routingFromEnvironment({}), fetch: transport });
@@ -108,7 +107,7 @@ test("streamed Meta tool delegation preserves opaque replay and emits actual too
   const replay = requests[2].input as Array<Record<string, unknown>>;
   assert.equal(replay.find(i => i.id === "rs_1")?.encrypted_content, "opaque-not-public");
   assert.equal(replay.find(i => i.id === "pre")?.phase, "commentary");
-  assert.equal(replay.filter(i => i.type === "function_call_output").length, 2);
+  assert.equal(replay.filter(i => i.type === "function_call_output").length, 1);
   assert.ok(events.some(e => e.type === "activity" && e.phase === "delegating" && e.targetAgentId === "metadata"));
   assert.ok(events.some(e => e.type === "activity" && e.phase === "tool_started" && e.toolName === "get_map"));
   assert.equal(JSON.stringify(events).includes("opaque-not-public"), false);

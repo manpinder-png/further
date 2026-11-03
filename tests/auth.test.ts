@@ -21,6 +21,8 @@ import { PATCH as accountUpdate } from "../app/api/auth/account/route.ts";
 import { PATCH as profileUpdate } from "../app/api/data/profile/route.ts";
 import { GET as identity, POST as chooseIdentity } from "../app/api/local/identity/route.ts";
 import { GET as bootstrap } from "../app/api/data/bootstrap/route.ts";
+import { POST as resetMap } from "../app/api/data/reset/route.ts";
+import { POST as completionCounts } from "../app/api/data/completions/route.ts";
 import { GET as googleStart } from "../app/api/auth/google/start/route.ts";
 import { GET as googleCallback } from "../app/api/auth/google/callback/route.ts";
 import type { TokenPayload } from "google-auth-library";
@@ -79,6 +81,57 @@ test("local request origins accept Next loopback normalization but reject differ
     ["http://localhost:3000/api/auth/session", "attacker.example:3000", "http://attacker.example:3000"],
     ["http://localhost:3000/api/auth/session", "127.0.0.1:3000", "http://localhost:3000"],
   ]) assert.throws(() => assertLocalRequest(new Request(url, { headers: { host, origin } })));
+});
+
+test("completion counts require identity and owned scopes and expose anonymous totals only", async () => {
+  const a = await create("counts_owner"), b = await create("counts_peer");
+  const topic = { slug: "counts-topic", title: "Counter topic", hook: "A synthetic topic", domain: "general" };
+  for (const owner of [a, b]) await repo.addConcepts(owner.account.learnerId, [topic]);
+  await repo.addConcepts(b.account.learnerId, [{ ...topic, slug: "counts-private" }]);
+  await repo.recordEvent(b.account.learnerId, { slug: topic.slug, kind: "explain", payload: { score: 3, source: "agent", provider: "meta", feedback: "PRIVATE_FEEDBACK" }, idempotencyKey: "counts-grade" });
+  const payload = { scopes: [{ id: "topic", conceptSlugs: [topic.slug] }] };
+  assert.equal((await completionCounts(req("/api/data/completions", "POST", payload))).status, 401);
+  assert.equal((await completionCounts(req("/api/data/completions", "POST", payload, a.cookie, { origin: "https://foreign.example" }))).status, 403);
+  assert.equal((await completionCounts(req("/api/data/completions", "POST", { ...payload, actorId: b.account.learnerId }, a.cookie))).status, 400);
+  assert.equal((await completionCounts(req("/api/data/completions", "POST", { scopes: [{ id: "private", conceptSlugs: ["counts-private"] }] }, a.cookie))).status, 404);
+  assert.equal((await completionCounts(req("/api/data/completions", "POST", payload, a.cookie, { "x-further-demo": "true" }))).status, 400);
+  const response = await completionCounts(req("/api/data/completions", "POST", payload, a.cookie));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.deepEqual(await response.json(), { counts: { topic: 1 } });
+});
+
+test("map reset requires signed-in same-origin confirmation, cannot target another account and retries preserve new learning", async () => {
+  const a = await create("reset_auth"), b = await create("reset_peer");
+  const topic = { slug: "reset-auth-topic", title: "Reset test topic", hook: "A private test", domain: "general" };
+  for (const owner of [a, b]) await repo.addConcepts(owner.account.learnerId, [topic]);
+  const payload = { confirmation: "RESET", idempotencyKey: "auth-map-reset" };
+  assert.equal((await resetMap(req("/api/data/reset", "POST", payload))).status, 401);
+  for (const [data, extra, status] of [
+    [{ idempotencyKey: payload.idempotencyKey }, {}, 400],
+    [{ ...payload, actorId: b.account.learnerId }, {}, 400],
+    [payload, { origin: "https://other.example" }, 403],
+    [payload, { "x-further-demo": "true" }, 400],
+    [payload, { "x-further-actor": b.account.learnerId }, 409],
+    [payload, { "idempotency-key": "different-key" }, 400],
+  ] as const) {
+    assert.equal((await resetMap(req("/api/data/reset", "POST", data, a.cookie, extra))).status, status);
+    assert.equal((await repo.getSnapshot(a.account.learnerId)).concepts.length, 1);
+  }
+  const result = await resetMap(req("/api/data/reset", "POST", payload, a.cookie));
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await result.json(), { ok: true });
+  const restored = await bootstrap(req("/api/data/bootstrap", "GET", undefined, a.cookie));
+  assert.equal(restored.status, 200);
+  const snapshot = await restored.json();
+  assert.deepEqual(snapshot.concepts, []);
+  assert.deepEqual(snapshot.events, []);
+  assert.deepEqual(snapshot.missions, []);
+  assert.equal((await repo.getSnapshot(b.account.learnerId)).concepts.length, 1);
+  await repo.addConcepts(a.account.learnerId, [topic]);
+  assert.equal((await resetMap(req("/api/data/reset", "POST", payload, a.cookie))).status, 200);
+  assert.equal((await repo.getSnapshot(a.account.learnerId)).concepts.length, 1);
 });
 
 test("accounts: signup, owner isolation, profile editing, signout and returning sign-in", async () => {

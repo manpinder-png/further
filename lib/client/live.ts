@@ -5,6 +5,7 @@ import { mutationKey, writableProfile } from "@/domains/ui/contracts";
 
 export const MODE_KEY = "further:data-mode:v2";
 export const IDENTITY_CHANGE_KEY = "further:identity-change:v1";
+export const MAP_RESET_KEY = "further:map-reset:v1";
 let expectedActor: string | null = null;
 /** A consistency check only. The server still obtains authority from its session. */
 export const setExpectedActor = (actorId: string | null) => { expectedActor = actorId; };
@@ -51,4 +52,10 @@ export const persistEvent = (slug: string, kind: string, payload?: Record<string
   localJson("/api/data/events", { method: "POST", headers: { "idempotency-key": idempotencyKey, ...(actorId ? {"x-further-actor": actorId} : {}) }, body: JSON.stringify({ slug, kind, payload, idempotencyKey }) });
 export const persistProfile = (profile: LocalProfile) =>
   localJson("/api/data/profile", { method: "PATCH", body: JSON.stringify(writableProfile(profile)) });
+export const resetLearningMap = (idempotencyKey: string) =>
+  localJson<{ ok: true }>("/api/data/reset", {
+    method: "POST",
+    headers: { "idempotency-key": idempotencyKey },
+    body: JSON.stringify({ confirmation: "RESET", idempotencyKey }),
+  });
 export const getRoom = (id: string) => localJson<RoomSnapshot>(`/api/local/sessions/${encodeURIComponent(id)}`);

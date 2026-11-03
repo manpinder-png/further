@@ -25,16 +25,16 @@ export class FixtureAgentModel implements AgentModel {
       matchingText: title, uncertainty: ["Offline fixture: metadata has not been inferred by a model."],
     });
     if (request.agentId === "knowledge-map") {
-      if (!request.messages.some((m) => m.role === "tool")) return {
+      const preparedTools = JSON.parse(request.messages.find(message => message.role === "user")?.content ?? "{}").preparedTools ?? {};
+      if (!preparedTools.get_map || (input.objective === "recommend" && !request.messages.some(message => message.toolCallId === "fixture_peers"))) return {
         ...response(null), text: "", toolCalls: [
-          { id: "fixture_map", name: "get_map", arguments: "{}" },
-          ...(input.objective === "plan" || input.objective === "summarize" ? [] : [{ id: "fixture_metadata", name: "infer_metadata", arguments: JSON.stringify({ text }) }]),
+          ...(preparedTools.get_map ? [] : [{ id: "fixture_map", name: "get_map", arguments: "{}" }]),
           ...(input.objective === "recommend" ? [{ id: "fixture_peers", name: "find_peers", arguments: JSON.stringify({ query: text, limit: 5 }) }] : []),
         ],
       };
       if (input.objective === "summarize") {
         const source = request.messages.find(message => message.toolCallId === "fixture_map");
-        const map = JSON.parse(source?.content ?? "{}") as { concepts?: Array<{ slug: string; title: string }> };
+        const map = (preparedTools.get_map ?? JSON.parse(source?.content ?? "{}")) as { concepts?: Array<{ slug: string; title: string }> };
         const saved = map.concepts ?? [];
         return response({ intent: "Your saved topics", root: saved[0]?.slug ?? "empty", rootTitle: saved[0]?.title ?? "Your saved topics", concepts: [], groups: saved.length ? [{ id: "saved-topics", title: "Saved topics · rehearsal", summary: "Offline rehearsal groups all supplied topics together. A real Meta model is needed to organize them by meaning.", conceptSlugs: saved.map(concept => concept.slug) }] : [], explanation: "Explicit offline rehearsal. No model organized these topics or inferred understanding.", recommendedPeerIds: [], nextActions: [] });
       }

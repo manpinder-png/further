@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import type { FurtherRepository, IndexItem, IndexStatus } from "../data/contracts";
 import { EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_SPACE } from "./space";
+import { contextualSearchText, isShortSearchQuery } from "./projection";
 export { EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_SPACE } from "./space";
 
 const response = z.object({ vectors: z.array(z.array(z.number().finite()).length(768)), model: z.literal(EMBEDDING_MODEL), revision: z.literal(EMBEDDING_REVISION), mode: z.literal("local-meta") });
@@ -84,6 +85,11 @@ export async function indexText(repo: FurtherRepository, actorId: string, items:
   return status;
 }
 export async function search(repo: FurtherRepository, actorId: string, text: string, signal?: AbortSignal) {
-  const r = await embed([text],signal);
+  let query = text;
+  if (isShortSearchQuery(text)) {
+    const [snapshot, runs] = await Promise.all([repo.getSnapshot(actorId), repo.getAgentRuns(actorId, 50)]);
+    query = contextualSearchText(text, snapshot.concepts, runs);
+  }
+  const r = await embed([query],signal);
   return repo.searchVectors(actorId,r.vectors[0],{model:r.model,modelRevision:r.revision,limit:8});
 }

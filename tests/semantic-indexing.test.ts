@@ -5,13 +5,80 @@ import { mkdtemp,rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRepository } from "../domains/data/repository.ts";
-import { EMBEDDING_MODEL,EMBEDDING_REVISION,EMBEDDING_SPACE,processIndexJobs,type Embedder } from "../domains/retrieval/client.ts";
-import type { FurtherRepository } from "../domains/data/contracts.ts";
+import { EMBEDDING_MODEL,EMBEDDING_REVISION,EMBEDDING_SPACE,processIndexJobs,search,type Embedder } from "../domains/retrieval/client.ts";
+import type { AgentRunRecord, FurtherRepository } from "../domains/data/contracts.ts";
+import { contextualSearchText } from "../domains/retrieval/projection.ts";
 const alpha={slug:"gpu-parallelism",title:"Graphics processors",hook:"Many arithmetic operations in parallel",domain:"ai-tech"};
 const beta={slug:"data-parallel-work",title:"Parallel computing",hook:"Divide computation between many workers",domain:"ai-tech"};
 const gamma={slug:"bread-rising",title:"Bread fermentation",hook:"Yeast produces carbon dioxide",domain:"food"};
 const vector=(axis=0)=>Array.from({length:768},(_,i)=>i===axis?1:0);
 const fakeEmbedder:Embedder=async texts=>({vectors:texts.map(t=>vector(t.includes("Bread")?1:0)),model:EMBEDDING_MODEL,revision:EMBEDDING_REVISION,mode:"local-meta"});
+const ai={slug:"artificial-intelligence",title:"Artificial intelligence",hook:"Models learn patterns from data and use them to make predictions.",domain:"ai-tech"};
+const savedMapRun = (overrides: Partial<AgentRunRecord> = {}): AgentRunRecord => ({
+ id:randomUUID(),actorId:randomUUID(),agentId:"knowledge-map",status:"succeeded",
+ input:{text:"How AI works ?",objective:"expand"},
+ output:{mode:"live",data:{concepts:[{slug:ai.slug}]}},createdAt:100,...overrides,
+});
+
+test("short owner queries reuse current saved concept descriptions and question-linked live maps",()=>{
+ assert.equal(contextualSearchText(ai.slug,[ai],[]),`${ai.slug}\nSaved learning context:\n${ai.title}. ${ai.hook}`);
+ assert.equal(contextualSearchText(" ARTIFICIAL   INTELLIGENCE ",[ai],[]),` ARTIFICIAL   INTELLIGENCE \nSaved learning context:\n${ai.title}. ${ai.hook}`);
+ assert.equal(contextualSearchText("How AI works ?",[ai],[savedMapRun()]),`How AI works ?\nSaved learning context:\n${ai.title}. ${ai.hook}`);
+ const newer={...ai,hook:"Current saved description."};
+ assert.match(contextualSearchText("How AI works ?",[newer],[savedMapRun()]),/Current saved description/);
+});
+
+test("query context excludes unrelated, fixture, failed and removed learning without rewriting long questions",()=>{
+ const query="How AI works ?";
+ for(const run of [
+  savedMapRun({input:{text:"How bread rises?",objective:"expand"}}),
+  savedMapRun({status:"failed"}),savedMapRun({agentId:"metadata"}),
+  savedMapRun({output:{mode:"fixture",data:{concepts:[{slug:ai.slug}]}}}),
+  savedMapRun({output:{mode:"live",data:{concepts:[{slug:gamma.slug}]}}}),
+ ]) assert.equal(contextualSearchText(query,[ai],[run]),query);
+ assert.equal(contextualSearchText(query,[],[savedMapRun()]),query);
+ const long="How do artificial intelligence systems learn from examples and use those patterns to make reliable predictions?";
+ assert.equal(contextualSearchText(long,[ai],[savedMapRun({input:{text:long,objective:"expand"}})]),long);
+});
+
+test("query context uses the latest matching live map and bounds descriptive text",()=>{
+ const old=savedMapRun({createdAt:100});
+ const latest=savedMapRun({createdAt:200,output:{mode:"live",data:{concepts:[{slug:gamma.slug}]}}});
+ const text=contextualSearchText("How AI works ?",[ai,gamma],[old,latest]);
+ assert.match(text,/Bread fermentation/);assert.equal(text.includes(ai.hook),false);
+ const large={...ai,hook:"x".repeat(4000)};
+ const bounded=contextualSearchText(ai.slug,[large],[]);
+ assert.equal(bounded.split("Saved learning context:\n")[1].length,1000);
+});
+
+test("owner search embeds linked context once, keeps results owner-scoped and propagates encoder failures",async t=>{
+ const r=await createRepository();const oldToken=process.env.FURTHER_EMBEDDING_TOKEN;
+ process.env.FURTHER_EMBEDDING_TOKEN="synthetic-search-token";
+ try {
+  const a=await user(r,"A",ai),b=await user(r,"B",gamma);
+  for(const id of[a,b])await processIndexJobs(r,id,{embedder:fakeEmbedder});
+  const run=savedMapRun({actorId:a});
+  await r.beginAgentRun({id:run.id,actorId:a,agentId:run.agentId,input:run.input});
+  await r.finishAgentRun(a,run.id,{output:run.output!});
+  const submitted:string[][]=[];
+  const request=t.mock.method(globalThis,"fetch",async (_input:unknown,init?:RequestInit)=>{
+   submitted.push(JSON.parse(String(init?.body)).texts);
+   return Response.json({vectors:[vector()],model:EMBEDDING_MODEL,revision:EMBEDDING_REVISION,mode:"local-meta"});
+  });
+  const hits=await search(r,a,"How AI works ?");
+  assert.equal(submitted.length,1);
+  assert.deepEqual(submitted[0],[`How AI works ?\nSaved learning context:\n${ai.title}. ${ai.hook}`]);
+  assert.ok(hits.some(hit=>hit.entityId===ai.slug));
+  assert.equal(hits.some(hit=>hit.entityId===gamma.slug),false);
+  await search(r,b,"How AI works ?");
+  assert.deepEqual(submitted[1],["How AI works ?"]);
+  request.mock.mockImplementation(async()=>{throw new Error("Encoder unavailable");});
+  await assert.rejects(search(r,a,ai.slug),/Encoder unavailable/);
+ }finally{
+  if(oldToken===undefined)delete process.env.FURTHER_EMBEDDING_TOKEN;else process.env.FURTHER_EMBEDDING_TOKEN=oldToken;
+  await r.close();
+ }
+});
 async function user(r:FurtherRepository,name:string,concept=alpha){const id=randomUUID();await r.ensureUser(id,name);await r.updateProfile(id,{openToMatch:true,staticProfile:{role:"learner",background:"private",age18Plus:true},currentIntent:`Private question from ${name}`});await r.addConcepts(id,[concept]);await r.heartbeat(id);return id;}
 
 test("index jobs persist with source mutations, deduplicate, and recover expired leases after reopen",async()=>{

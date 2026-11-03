@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRepository } from "../domains/data/repository.ts";
 import type { FurtherRepository } from "../domains/data/contracts.ts";
+import { EMBEDDING_SPACE } from "../domains/retrieval/space.ts";
 
 const gpu={slug:"gpu",title:"Graphics processors",hook:"Parallel work",domain:"ai-tech"};
 const mem={slug:"memory-bandwidth",title:"Memory bandwidth",hook:"Feeding the processor",domain:"ai-tech"};
@@ -53,6 +54,130 @@ test("local data: durable profile, private snapshot and idempotent graph/events 
     assert.equal(restored.events.filter(e=>e.kind==="open").length,1);
     assert.equal(restored.metadata[0].values.private,"only Alex");
   } finally {await r.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test("completion counts deduplicate learners, require every topic member and survive reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "further-completions-"));
+  const dataDir = join(directory, "pg");
+  let repo = await createRepository({ dataDir });
+  try {
+    const { a, b, c } = await learners(repo);
+    const scopes = [
+      { id: "gpu", conceptSlugs: [gpu.slug] },
+      { id: "memory", conceptSlugs: [mem.slug] },
+      { id: "hardware", conceptSlugs: [gpu.slug, mem.slug] },
+    ];
+    const grade = (actorId: string, slug: string, score: number, key: string, provider = "meta", source = "agent") =>
+      repo.recordEvent(actorId, { slug, kind: "explain", payload: { score, source, provider }, idempotencyKey: key });
+    const counts = () => repo.getCompletionCounts(a, scopes);
+    await repo.addConcepts(a, [{ ...gpu, slug: "legacy--concept-" }]);
+    await grade(a, "legacy--concept-", 3, "legacy-explanation");
+    assert.deepEqual(await repo.getCompletionCounts(a, [{ id: "legacy", conceptSlugs: ["legacy--concept-"] }]), { legacy: 1 });
+    assert.deepEqual(await counts(), { gpu: 0, memory: 0, hardware: 0 });
+    await grade(a, gpu.slug, 2, "partial-one");
+    await grade(a, gpu.slug, 2, "partial-two");
+    await repo.recordEvent(a, { slug: gpu.slug, kind: "watch", payload: { score: 3 }, idempotencyKey: "watched" });
+    assert.deepEqual(await counts(), { gpu: 0, memory: 0, hardware: 0 });
+    await Promise.all([grade(a, gpu.slug, 3, "full-one"), grade(a, gpu.slug, 3, "full-one")]);
+    await grade(a, gpu.slug, 3, "full-again");
+    assert.deepEqual(await counts(), { gpu: 1, memory: 0, hardware: 0 });
+    await grade(b, gpu.slug, 3, "b-gpu");
+    await grade(b, mem.slug, 3, "b-memory");
+    await grade(c, mem.slug, 3, "c-memory");
+    // Equal per-concept totals do not mean the same people completed the group.
+    assert.deepEqual(await counts(), { gpu: 2, memory: 2, hardware: 1 });
+    await grade(c, gpu.slug, 3, "fixture-grade", "fixture");
+    await grade(c, gpu.slug, 3, "user-grade", "meta", "user");
+    await grade(c, gpu.slug, 4, "invalid-grade");
+    assert.deepEqual(await counts(), { gpu: 2, memory: 2, hardware: 1 });
+    await grade(a, mem.slug, 3, "a-memory");
+    assert.deepEqual(await counts(), { gpu: 2, memory: 3, hardware: 2 });
+    assert.equal((await repo.getCompletionCounts(a, [{ id: "duplicated-member", conceptSlugs: [gpu.slug, gpu.slug] }]))["duplicated-member"], 2);
+    await assert.rejects(repo.getCompletionCounts(a, [{ id: "foreign", conceptSlugs: ["not-owned"] }]), /only for topics/);
+    await assert.rejects(repo.getCompletionCounts(a, [{ id: "same", conceptSlugs: [gpu.slug] }, { id: "same", conceptSlugs: [mem.slug] }]), /unique IDs/);
+    await repo.close();
+    repo = await createRepository({ dataDir });
+    assert.deepEqual(await counts(), { gpu: 2, memory: 3, hardware: 2 });
+    await repo.resetLearningMap(b, "remove-b-evidence");
+    assert.deepEqual(await counts(), { gpu: 1, memory: 2, hardware: 1 });
+  } finally { await repo.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("map reset clears only the owner's learning, invalidates leased indexing and preserves retry receipts after reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "further-reset-"));
+  const dataDir = join(directory, "pg");
+  let repo = await createRepository({ dataDir });
+  try {
+    const account = await repo.auth.createPasswordAccount({ email: "reset@example.test", username: "reset_owner", displayName: "Reset owner", passwordHash: "synthetic-test-hash" });
+    const a = account.learnerId, b = randomUUID();
+    await repo.ensureUser(b, "Peer");
+    for (const id of [a, b]) {
+      await repo.updateProfile(id, { currentIntent: "Keep my profile goal", staticProfile: { role: "learner", background: "Keep my background", age18Plus: true }, openToMatch: true });
+      await repo.addConcepts(id, [gpu, mem], [{ src: gpu.slug, dst: mem.slug, kind: "related" }]);
+      await repo.heartbeat(id);
+    }
+    const sessionHash = "a".repeat(64);
+    await repo.auth.createSession(sessionHash, account.id, Date.now() + 60_000);
+    const sessionId = await room(repo, a, b);
+    await repo.appendMessage(a, sessionId, "Keep this shared conversation", { idempotencyKey: "shared-message" });
+    await repo.completeSession(a, sessionId);
+    const media = await repo.saveMedia({ actorId: a, kind: "image", mimeType: "image/png", localPath: "preserved-image", contentHash: "synthetic", byteSize: 10 });
+    await repo.saveMetadata(a, "intent-proposal", { intent: "Private generated history" }, { source: "agent", schemaVersion: 1 });
+    const parent = await repo.beginAgentRun({ id: randomUUID(), actorId: a, agentId: "knowledge-map", input: { text: "Old question" } });
+    const child = await repo.beginAgentRun({ id: randomUUID(), actorId: a, agentId: "metadata", parentRunId: parent.id, input: {} });
+    for (const run of [child, parent]) await repo.finishAgentRun(a, run.id, { output: { saved: true } });
+    const vector = [1, ...new Array<number>(767).fill(0)];
+    const jobs = await repo.claimIndexJobs(a, EMBEDDING_SPACE);
+    const leased = jobs.find(job => job.entityType === "concept")!;
+    assert.ok(leased);
+    const ready = jobs.find(job => job.entityType === "concept" && job.id !== leased.id)!;
+    assert.equal(await repo.completeIndexJob(a, ready.id, ready.leaseToken!, vector), true);
+    const profile = await repo.getProfile(a), peerBefore = await repo.getSnapshot(b);
+
+    await Promise.all([repo.resetLearningMap(a, "reset-once"), repo.resetLearningMap(a, "reset-once")]);
+    const empty = await repo.getSnapshot(a);
+    assert.deepEqual(empty.concepts, []);
+    assert.deepEqual(empty.edges, []);
+    assert.deepEqual(empty.events, []);
+    assert.deepEqual(empty.metadata, []);
+    assert.deepEqual(await repo.getAgentRuns(a), []);
+    assert.deepEqual((await repo.getOwnedVectors(a, EMBEDDING_SPACE)).filter(item => item.entityType !== "intent"), []);
+    assert.equal(await repo.completeIndexJob(a, leased.id, leased.leaseToken!, vector), false);
+    await assert.rejects(repo.recordEvent(a, { slug: gpu.slug, kind: "open", idempotencyKey: "late-old-event" }), /no longer in your learning map/);
+    assert.deepEqual(await repo.getProfile(a), profile);
+    assert.deepEqual(await repo.getSnapshot(b), peerBefore);
+    assert.equal((await repo.auth.sessionAccount(sessionHash))?.id, account.id);
+    assert.equal((await repo.getMedia(a, media.id)).localPath, media.localPath);
+    assert.equal((await repo.getSession(a, sessionId)).messages[0].text, "Keep this shared conversation");
+    assert.ok((await repo.getConcepts()).some(concept => concept.slug === gpu.slug));
+    await repo.close(); repo = await createRepository({ dataDir });
+    await repo.addConcepts(a, [mem]);
+    await repo.resetLearningMap(a, "reset-once");
+    assert.deepEqual((await repo.getSnapshot(a)).concepts.map(concept => concept.slug), [mem.slug]);
+    await repo.resetLearningMap(a, "reset-again");
+    assert.deepEqual((await repo.getSnapshot(a)).concepts, []);
+  } finally { await repo.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("map reset refuses active guides, invitations and rooms without partially removing learning", async () => {
+  const repo = await createRepository();
+  try {
+    const { a, b } = await learners(repo);
+    const run = await repo.beginAgentRun({ id: randomUUID(), actorId: a, agentId: "knowledge-map", input: {} });
+    await assert.rejects(repo.resetLearningMap(a, "guarded-reset"), { code: "LEARNING_MAP_BUSY" });
+    assert.equal((await repo.getSnapshot(a)).concepts.length, 2);
+    await repo.finishAgentRun(a, run.id, { error: "Synthetic completed failure" });
+    const invite = await repo.invite(a, b, gpu.slug);
+    await assert.rejects(repo.resetLearningMap(a, "guarded-reset"), { code: "LEARNING_MAP_BUSY" });
+    await repo.respondToInvite(a, invite.id, "accept");
+    const accepted = await repo.respondToInvite(b, invite.id, "accept");
+    await assert.rejects(repo.resetLearningMap(a, "guarded-reset"), { code: "LEARNING_MAP_BUSY" });
+    assert.equal((await repo.getSnapshot(a)).concepts.length, 2);
+    await repo.completeSession(a, accepted.sessionId!);
+    await repo.resetLearningMap(a, "guarded-reset");
+    assert.deepEqual((await repo.getSnapshot(a)).concepts, []);
+    assert.equal((await repo.getSnapshot(b)).concepts.length, 2);
+  } finally { await repo.close(); }
 });
 
 test("local data: only eligible, fresh, consented peer projection is exposed",async()=>{
